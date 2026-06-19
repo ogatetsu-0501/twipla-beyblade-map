@@ -1,4 +1,4 @@
-import { load } from 'cheerio';
+import { load, type CheerioAPI } from 'cheerio';
 
 import {
   LOCATION_PRIVATE_WORDS,
@@ -15,6 +15,15 @@ type Coordinates = {
   latitude: number;
   longitude: number;
 };
+
+const ADDRESS_PATTERN =
+  /(?:〒\s*\d{3}-?\d{4}\s*)?(?:北海道|東京都|大阪府|京都府|.{2,3}県)[^\n]{3,100}/;
+
+const LABEL_PATTERN =
+  /(?:■|●|◆|【)?(?:開催場所|会場|場所|住所|駐車場|参加費|定員|募集人数|開催日時|日時|日付|時間|注意|その他)(?:】)?\s*[:：]?/g;
+
+const LOCATION_LABELS = ['開催場所', '会場', '場所'];
+const ADDRESS_LABELS = ['住所'];
 
 /**
  * URL内の緯度・経度候補を、有限数値であることを確認して返します。
@@ -64,21 +73,74 @@ const parseDirectionCoordinates = (href: string): Coordinates | null => {
 };
 
 /**
- * 詳細本文から「住所」ラベルの直後にある日本語住所を探します。
+ * 本文HTMLのブロック境界を改行へ変換し、ラベル単位で解析できる行配列を作ります。
  */
-const extractAddressFromDescription = (descriptionText: string): string => {
-  const patterns = [
-    /(?:■|●|【)?住所(?:】)?\s*[:：]?\s*([^\n]{5,100})/i,
-    /(?:■|●|【)?開催場所(?:】)?\s*[:：]?\s*[^\n]*?\s((?:北海道|東京都|大阪府|京都府|.{2,3}県)[^\n]{3,100})/i,
-    /((?:北海道|東京都|大阪府|京都府|.{2,3}県)[^\n]{5,100})/,
-  ];
+const createDescriptionLines = ($: CheerioAPI): string[] => {
+  const description = $('#desc').clone();
 
-  for (const pattern of patterns) {
-    const match = descriptionText.match(pattern);
-    const address = normalizeText(match?.[1] ?? '');
+  description.find('br').replaceWith('\n');
+  description
+    .find('div, p, li, section, article, h1, h2, h3, h4, h5, h6')
+    .each((_, element) => {
+      $(element).prepend('\n').append('\n');
+    });
 
-    if (!!address) {
-      return address;
+  const text = description
+    .text()
+    .replace(/\r/g, '')
+    .replace(/[\t\u00a0]+/g, ' ')
+    .replace(LABEL_PATTERN, (label) => `\n${label}`)
+    .replace(/\n{2,}/g, '\n');
+
+  return text
+    .split('\n')
+    .map((line) => normalizeText(line))
+    .filter(Boolean);
+};
+
+/**
+ * 同じ行に後続項目が連結している場合、次のラベルより前だけを値として残します。
+ */
+const trimFollowingLabel = (value: string): string => {
+  const match = value.match(
+    /^(.*?)(?=(?:■|●|◆|【)?(?:住所|駐車場|参加費|定員|募集人数|開催日時|日時|日付|時間|注意|その他)(?:】)?\s*[:：]?|$)/,
+  );
+
+  return normalizeText(match?.[1] ?? value);
+};
+
+/**
+ * 指定したラベルの行、または直後の行から値を取り出します。
+ */
+const extractLabeledValue = (
+  lines: string[],
+  labels: string[],
+): string => {
+  for (const [index, line] of lines.entries()) {
+    for (const label of labels) {
+      const pattern = new RegExp(
+        `^(?:■|●|◆|【)?${label}(?:】)?\\s*[:：]?\\s*(.*)$`,
+        'i',
+      );
+      const match = line.match(pattern);
+
+      if (!match) {
+        continue;
+      }
+
+      const inlineValue = trimFollowingLabel(match[1] ?? '');
+
+      if (inlineValue) {
+        return inlineValue;
+      }
+
+      const nextLine = lines[index + 1] ?? '';
+      const nextLineIsLabel = LABEL_PATTERN.test(nextLine);
+      LABEL_PATTERN.lastIndex = 0;
+
+      if (nextLine && !nextLineIsLabel) {
+        return trimFollowingLabel(nextLine);
+      }
     }
   }
 
@@ -86,26 +148,45 @@ const extractAddressFromDescription = (descriptionText: string): string => {
 };
 
 /**
- * 本文から開催場所ラベルの直後にある施設名や地域名を探します。
+ * 本文から日本の住所らしい文字列を探します。
  */
-const extractLocationFromDescription = (
-  descriptionText: string,
-): string => {
-  const patterns = [
-    /(?:■|●|【)?開催場所(?:】)?\s*[:：]?\s*([^\n]{2,100})/i,
-    /(?:■|●|【)?場所(?:】)?\s*[:：]?\s*([^\n]{2,100})/i,
-  ];
+const extractAddressFromDescription = (lines: string[]): string => {
+  const labeledAddress = extractLabeledValue(lines, ADDRESS_LABELS);
+  const labeledMatch = labeledAddress.match(ADDRESS_PATTERN);
 
-  for (const pattern of patterns) {
-    const match = descriptionText.match(pattern);
-    const locationText = normalizeText(match?.[1] ?? '');
+  if (labeledMatch?.[0]) {
+    return normalizeText(labeledMatch[0]);
+  }
 
-    if (!!locationText) {
-      return locationText;
+  for (const line of lines) {
+    const addressMatch = line.match(ADDRESS_PATTERN);
+
+    if (addressMatch?.[0]) {
+      return normalizeText(addressMatch[0]);
     }
   }
 
   return '';
+};
+
+/**
+ * 専用の場所欄から、リンク文言を除いた表示行を取得します。
+ */
+const extractDedicatedLocationLines = ($: CheerioAPI): string[] => {
+  const locationSection = $('.bluetext')
+    .filter((_, element) => normalizeText($(element).text()) === '場所')
+    .first()
+    .next('.content_width')
+    .clone();
+
+  locationSection.find('a').remove();
+  locationSection.find('br').replaceWith('\n');
+
+  return locationSection
+    .text()
+    .split('\n')
+    .map((line) => normalizeText(line))
+    .filter(Boolean);
 };
 
 /**
@@ -141,7 +222,7 @@ const classifyLocation = (
     };
   }
 
-  if (!!coordinates || !!address) {
+  if (coordinates || address) {
     return {
       status: 'exact',
       note: '',
@@ -158,7 +239,7 @@ const classifyLocation = (
     };
   }
 
-  if (!!locationText) {
+  if (locationText) {
     return {
       status: 'venue',
       note: '施設名のみ掲載されています',
@@ -195,13 +276,12 @@ export const parseEventDetail = (
   const directionCoordinates = parseDirectionCoordinates(directionHref);
   const coordinates = iframeCoordinates ?? directionCoordinates;
 
-  const locationSection = $('.bluetext')
-    .filter((_, element) => normalizeText($(element).text()) === '場所')
-    .first()
-    .next('.content_width')
-    .clone();
-  locationSection.find('a').remove();
-  const dedicatedLocation = normalizeText(locationSection.text());
+  const dedicatedLocationLines = extractDedicatedLocationLines($);
+  const dedicatedAddress = dedicatedLocationLines
+    .map((line) => line.match(ADDRESS_PATTERN)?.[0] ?? '')
+    .find(Boolean) ?? '';
+  const dedicatedVenue = dedicatedLocationLines
+    .find((line) => !ADDRESS_PATTERN.test(line)) ?? '';
 
   const calendarHref =
     $('a[href*="google.com/calendar/event"]').first().attr('href') ?? '';
@@ -215,26 +295,24 @@ export const parseEventDetail = (
     calendarLocation = '';
   }
 
-  const descriptionText = $('#desc')
-    .text()
-    .replace(/\r/g, '')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{2,}/g, '\n');
-  const descriptionAddress = extractAddressFromDescription(descriptionText);
-  const descriptionLocation =
-    extractLocationFromDescription(descriptionText);
+  const descriptionLines = createDescriptionLines($);
+  const descriptionAddress =
+    extractAddressFromDescription(descriptionLines);
+  const descriptionLocation = extractLabeledValue(
+    descriptionLines,
+    LOCATION_LABELS,
+  );
 
-  const address =
-    dedicatedLocation.match(
-      /(?:北海道|東京都|大阪府|京都府|.{2,3}県).+/,
-    )?.[0] ??
-    descriptionAddress ??
-    '';
-  const locationText =
-    dedicatedLocation ||
-    calendarLocation ||
-    descriptionLocation ||
-    searchEvent.summaryLocation;
+  const address = normalizeText(
+    dedicatedAddress || descriptionAddress,
+  );
+  const locationText = normalizeText(
+    dedicatedVenue ||
+      calendarLocation ||
+      descriptionLocation ||
+      searchEvent.summaryLocation ||
+      address,
+  );
   const classification = classifyLocation(
     locationText,
     address,
@@ -243,8 +321,8 @@ export const parseEventDetail = (
 
   return {
     ...searchEvent,
-    address: normalizeText(address),
-    locationText: normalizeText(locationText),
+    address,
+    locationText,
     latitude: coordinates?.latitude ?? null,
     longitude: coordinates?.longitude ?? null,
     locationStatus: classification.status,

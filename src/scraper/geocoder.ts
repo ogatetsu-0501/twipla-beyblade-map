@@ -12,6 +12,8 @@ import type {
 } from './types';
 import { normalizeText, waitRandomDelay } from './utils';
 
+const CACHE_KEY_VERSION = 'v2';
+
 /**
  * 前回までのジオコーディング結果をファイルから読み込みます。
  */
@@ -51,8 +53,9 @@ const requestCoordinates = async (
 ): Promise<GeocodeResult | null> => {
   const url = new URL('https://nominatim.openstreetmap.org/search');
   url.searchParams.set('format', 'jsonv2');
-  url.searchParams.set('limit', '1');
+  url.searchParams.set('limit', '3');
   url.searchParams.set('countrycodes', 'jp');
+  url.searchParams.set('addressdetails', '1');
   url.searchParams.set('q', query);
 
   const response = await fetch(url, {
@@ -83,6 +86,78 @@ const requestCoordinates = async (
 };
 
 /**
+ * 注釈やURLを除去し、住所検索へ渡しやすい文字列へ整えます。
+ */
+const cleanGeocodeText = (value: string): string =>
+  normalizeText(value)
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/(?:※|⚠️?).*$/u, '')
+    .replace(/(?:■|●|◆)(?:住所|駐車場|参加費|定員|注意).*$/u, '')
+    .replace(/[「」『』【】]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 140);
+
+/**
+ * 住所、施設名、一覧の地域情報を組み合わせ、検索候補を優先順に作ります。
+ */
+export const createGeocodeQueries = (
+  event: Pick<
+    EventDetail,
+    'address' | 'locationText' | 'summaryLocation'
+  >,
+): string[] => {
+  const address = cleanGeocodeText(event.address);
+  const venue = cleanGeocodeText(event.locationText);
+  const summary = cleanGeocodeText(event.summaryLocation);
+  const queries = [
+    address,
+    venue && address ? `${venue} ${address}` : '',
+    venue && summary && venue !== summary
+      ? `${venue} ${summary}`
+      : '',
+    venue,
+    summary,
+  ];
+
+  return [...new Set(queries.filter(Boolean))];
+};
+
+/**
+ * キャッシュを利用しながら1つの検索候補を座標へ変換します。
+ */
+const geocodeQuery = async (
+  query: string,
+  userAgent: string,
+  cache: GeocodeCache,
+): Promise<GeocodeResult | null> => {
+  const cacheKey = `${CACHE_KEY_VERSION}:${query}`;
+  const hasCachedQuery = Object.prototype.hasOwnProperty.call(
+    cache,
+    cacheKey,
+  );
+
+  if (hasCachedQuery) {
+    return cache[cacheKey] ?? null;
+  }
+
+  await waitRandomDelay(1200, 1800);
+
+  let result: GeocodeResult | null = null;
+
+  try {
+    result = await requestCoordinates(query, userAgent);
+  } catch (error) {
+    console.warn(`住所検索をスキップしました: ${query}`, error);
+  }
+
+  cache[cacheKey] = result;
+  await saveCache(cache);
+
+  return result;
+};
+
+/**
  * 座標がないイベントだけを低速でジオコーディングします。
  */
 export const geocodeEvents = async (
@@ -106,35 +181,16 @@ export const geocodeEvents = async (
       continue;
     }
 
-    const query = normalizeText(event.address || event.locationText);
-    const hasQuery = !!query;
+    const queries = createGeocodeQueries(event);
+    let result: GeocodeResult | null = null;
 
-    if (!hasQuery) {
-      resolvedEvents.push(event);
-      continue;
-    }
+    for (const query of queries) {
+      result = await geocodeQuery(query, userAgent, cache);
 
-    const hasCachedQuery = Object.prototype.hasOwnProperty.call(
-      cache,
-      query,
-    );
-    let result = hasCachedQuery ? cache[query] ?? null : null;
-
-    if (!hasCachedQuery) {
-      await waitRandomDelay(1200, 1800);
-
-      try {
-        result = await requestCoordinates(query, userAgent);
-      } catch (error) {
-        console.warn(
-          `住所検索をスキップしました: ${query}`,
-          error,
-        );
-        result = null;
+      if (result) {
+        console.log(`座標を補完しました: ${query}`);
+        break;
       }
-
-      cache[query] = result;
-      await saveCache(cache);
     }
 
     if (!result) {
@@ -163,25 +219,7 @@ export const geocodeDefaultCenter = async (
   fallback: GeocodeResult,
 ): Promise<GeocodeResult> => {
   const cache = await loadCache();
-  const hasCachedAddress = Object.prototype.hasOwnProperty.call(
-    cache,
-    address,
-  );
-  let result = hasCachedAddress ? cache[address] ?? null : null;
-
-  if (!hasCachedAddress) {
-    await waitRandomDelay(1200, 1800);
-
-    try {
-      result = await requestCoordinates(address, userAgent);
-    } catch (error) {
-      console.warn('初期表示住所の座標取得に失敗しました', error);
-      result = null;
-    }
-
-    cache[address] = result;
-    await saveCache(cache);
-  }
+  const result = await geocodeQuery(address, userAgent, cache);
 
   return result ?? fallback;
 };

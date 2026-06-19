@@ -66,6 +66,8 @@ const focusCurrentLocation = (
       map.setView(center, DEFAULT_ZOOM);
       L.circleMarker(center, {
         radius: 7,
+        weight: 2,
+        fillOpacity: 0.85,
       })
         .addTo(map)
         .bindTooltip('現在地');
@@ -85,7 +87,7 @@ const focusCurrentLocation = (
 };
 
 /**
- * 座標を持つイベントをLeafletのマーカーとして追加します。
+ * 座標を持つイベントを、画像に依存しない円形マーカーとして追加します。
  */
 const addEventMarkers = (
   map: Map,
@@ -98,9 +100,14 @@ const addEventMarkers = (
       continue;
     }
 
-    const latitude = event.latitude;
-    const longitude = event.longitude;
-    const marker = L.marker([latitude, longitude]).addTo(map);
+    const marker = L.circleMarker(
+      [event.latitude, event.longitude],
+      {
+        radius: 8,
+        weight: 2,
+        fillOpacity: 0.9,
+      },
+    ).addTo(map);
     const tooltipHtml = [
       `<strong>${escapeHtml(event.title)}</strong>`,
       escapeHtml(event.startsAtText),
