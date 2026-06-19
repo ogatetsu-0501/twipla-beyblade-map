@@ -13,6 +13,20 @@ export const DEFAULT_FALLBACK_CENTER = {
 
 export const OUTPUT_FILE_PATH = 'public/data/events.bin';
 export const GEOCODE_CACHE_FILE_PATH = '.cache/geocode.json';
+export const EVENT_CACHE_FILE_PATH = '.cache/events.json';
+
+export const EVENT_CACHE_SCHEMA_VERSION = 2;
+export const EVENT_CACHE_MAX_AGE_DAYS = 28;
+export const EVENT_CACHE_REFRESH_WINDOW_DAYS = 14;
+
+
+/**
+ * 詳細本文内のSNSリンクで除外する場合に追加します。
+ * URLは小文字化し、twitter.comはx.comとして比較します。
+ */
+export const EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS = [
+  'x.com/takashi',
+];
 
 export const LOCATION_PRIVATE_WORDS = [
   'discord',

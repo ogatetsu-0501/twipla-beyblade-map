@@ -12,12 +12,28 @@ import {
 } from './constants';
 import { parseEventDetail } from './detail-parser';
 import {
+  extractDetailSocialLinks,
+  isExcludedByDetailSocialLinks,
+} from './exclusions';
+import {
+  createEventFingerprint,
+  loadEventCache,
+  mergeCachedEvent,
+  saveEventCache,
+  shouldRefreshCachedEvent,
+} from './event-cache';
+import {
   geocodeDefaultCenter,
   geocodeEvents,
 } from './geocoder';
 import { SlowHttpClient } from './http';
 import { parseSearchResults } from './search-parser';
-import type { EventDetail, PublishedPayload } from './types';
+import type {
+  EventCacheEntry,
+  EventDetail,
+  PublishedPayload,
+  SearchEvent,
+} from './types';
 import { readPositiveInteger } from './utils';
 import { q } from '../shared/pack';
 
@@ -54,9 +70,9 @@ const createJapanDate = (): string => {
 const fetchAllSearchEvents = async (
   client: SlowHttpClient,
   limit: number,
-): Promise<ReturnType<typeof parseSearchResults>> => {
+): Promise<SearchEvent[]> => {
   const searchDate = createJapanDate();
-  const allEvents: ReturnType<typeof parseSearchResults> = [];
+  const allEvents: SearchEvent[] = [];
   const seenEventIds = new Set<string>();
 
   for (let page = 1; ; page += 1) {
@@ -67,7 +83,8 @@ const fetchAllSearchEvents = async (
     const pageEvents = parseSearchResults(html);
 
     for (const event of pageEvents) {
-      const isNewEvent = !seenEventIds.has(event.eventId);
+      const isNewEvent =
+        !seenEventIds.has(event.eventId);
 
       if (isNewEvent) {
         seenEventIds.add(event.eventId);
@@ -85,45 +102,157 @@ const fetchAllSearchEvents = async (
   return allEvents;
 };
 
+type ResolvedDetail = {
+  event: EventDetail;
+  fetchedAt: string;
+  detailSocialLinks: string[];
+};
+
 /**
- * 検索候補の詳細ページを1件ずつ取得して、場所情報を抽出します。
+ * 新規、一覧情報変更、期限切れ、開催直前のイベントだけ詳細を再取得します。
+ * 詳細本文のSNSリンクが除外設定に一致したイベントは公開対象に含めません。
  */
-const fetchAllDetails = async (
+const resolveAllDetails = async (
   client: SlowHttpClient,
-  searchEvents: Awaited<ReturnType<typeof fetchAllSearchEvents>>,
-): Promise<EventDetail[]> => {
-  const details: EventDetail[] = [];
+  searchEvents: SearchEvent[],
+): Promise<ResolvedDetail[]> => {
+  const cache = await loadEventCache();
+  const resolvedDetails: ResolvedDetail[] = [];
+  const now = new Date();
+  let fetchedCount = 0;
+  let skippedCount = 0;
+  let excludedCount = 0;
 
   for (const [index, searchEvent] of searchEvents.entries()) {
+    const cacheEntry = cache.events[searchEvent.eventId];
+    const shouldRefresh = shouldRefreshCachedEvent(
+      searchEvent,
+      cacheEntry,
+      now,
+    );
+
+    if (!shouldRefresh && cacheEntry) {
+      if (
+        isExcludedByDetailSocialLinks(
+          cacheEntry.detailSocialLinks,
+        )
+      ) {
+        excludedCount += 1;
+        console.log(
+          `詳細SNSリンクの除外設定によりスキップします: ${searchEvent.eventUrl}`,
+        );
+        continue;
+      }
+
+      resolvedDetails.push({
+        event: mergeCachedEvent(
+          cacheEntry.event,
+          searchEvent,
+        ),
+        fetchedAt: cacheEntry.fetchedAt,
+        detailSocialLinks:
+          cacheEntry.detailSocialLinks,
+      });
+      skippedCount += 1;
+      console.log(
+        `詳細取得をスキップします (${index + 1}/${searchEvents.length}): ${searchEvent.eventUrl}`,
+      );
+      continue;
+    }
+
     console.log(
       `詳細を取得します (${index + 1}/${searchEvents.length}): ${searchEvent.eventUrl}`,
     );
 
     try {
       const html = await client.getText(searchEvent.eventUrl);
-      details.push(parseEventDetail(html, searchEvent));
+      const detailSocialLinks =
+        extractDetailSocialLinks(html);
+
+      if (
+        isExcludedByDetailSocialLinks(detailSocialLinks)
+      ) {
+        excludedCount += 1;
+        console.log(
+          `詳細SNSリンクの除外設定によりスキップします: ${searchEvent.eventUrl} links=${detailSocialLinks.join(',')}`,
+        );
+        continue;
+      }
+
+      resolvedDetails.push({
+        event: parseEventDetail(html, searchEvent),
+        fetchedAt: new Date().toISOString(),
+        detailSocialLinks,
+      });
+      fetchedCount += 1;
     } catch (error) {
       console.warn(
-        `詳細取得に失敗したため、地図対象外として残します: ${searchEvent.eventUrl}`,
+        `詳細取得に失敗したため、キャッシュまたは地図対象外情報を利用します: ${searchEvent.eventUrl}`,
         error,
       );
-      details.push({
-        ...searchEvent,
-        address: '',
-        locationText: searchEvent.summaryLocation,
-        latitude: null,
-        longitude: null,
-        locationStatus: 'unknown',
-        locationNote: '詳細ページの取得に失敗しました',
-      });
+
+      if (
+        cacheEntry &&
+        !isExcludedByDetailSocialLinks(
+          cacheEntry.detailSocialLinks,
+        )
+      ) {
+        resolvedDetails.push({
+          event: mergeCachedEvent(
+            cacheEntry.event,
+            searchEvent,
+          ),
+          fetchedAt: cacheEntry.fetchedAt,
+          detailSocialLinks:
+            cacheEntry.detailSocialLinks,
+        });
+      } else if (!cacheEntry) {
+        resolvedDetails.push({
+          event: {
+            ...searchEvent,
+            address: '',
+            locationText: searchEvent.summaryLocation,
+            latitude: null,
+            longitude: null,
+            locationStatus: 'unknown',
+            locationNote: '詳細ページの取得に失敗しました',
+          },
+          fetchedAt: new Date().toISOString(),
+          detailSocialLinks: [],
+        });
+      }
     }
   }
 
-  return details;
+  console.log(
+    `詳細取得: ${fetchedCount}件、キャッシュ利用: ${skippedCount}件、SNSリンク除外: ${excludedCount}件`,
+  );
+
+  return resolvedDetails;
 };
 
 /**
- * スクレイピング、場所補完、公開用ファイル生成を順番に実行します。
+ * 最新イベントだけをイベントキャッシュへ保存します。
+ */
+const persistEventCache = async (
+  resolvedDetails: ResolvedDetail[],
+): Promise<void> => {
+  const entries: EventCacheEntry[] =
+    resolvedDetails.map((resolved) => ({
+      fingerprint: createEventFingerprint(
+        resolved.event,
+      ),
+      fetchedAt: resolved.fetchedAt,
+      detailSocialLinks:
+        resolved.detailSocialLinks,
+      event: resolved.event,
+    }));
+
+  await saveEventCache(entries);
+};
+
+/**
+ * スクレイピング、場所補完、キャッシュ更新、公開用ファイル生成を順番に実行します。
  */
 const main = async (): Promise<void> => {
   const userAgent =
@@ -148,11 +277,36 @@ const main = async (): Promise<void> => {
     maximumDelayMilliseconds,
   });
 
-  const searchEvents = await fetchAllSearchEvents(client, searchLimit);
+  const searchEvents = await fetchAllSearchEvents(
+    client,
+    searchLimit,
+  );
   console.log(`${searchEvents.length}件の候補を取得しました`);
 
-  const rawDetails = await fetchAllDetails(client, searchEvents);
-  const events = await geocodeEvents(rawDetails, userAgent);
+  const resolvedDetails = await resolveAllDetails(
+    client,
+    searchEvents,
+  );
+  const rawEvents = resolvedDetails.map(
+    (resolved) => resolved.event,
+  );
+  const events = await geocodeEvents(
+    rawEvents,
+    userAgent,
+  );
+  const eventsById = new Map(
+    events.map((event) => [event.eventId, event]),
+  );
+  const geocodedResolvedDetails =
+    resolvedDetails.map((resolved) => ({
+      ...resolved,
+      event:
+        eventsById.get(resolved.event.eventId) ??
+        resolved.event,
+    }));
+
+  await persistEventCache(geocodedResolvedDetails);
+
   const defaultCenter = await geocodeDefaultCenter(
     DEFAULT_FOCUS_ADDRESS,
     userAgent,

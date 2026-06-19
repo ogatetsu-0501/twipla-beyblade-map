@@ -181,10 +181,17 @@ footer {
   line-height: 1.8;
 }
 
-.leaflet-tooltip {
-  max-width: min(360px, 70vw);
+.leaflet-tooltip.event-tooltip {
+  width: min(320px, calc(100vw - 40px));
+  max-width: min(320px, calc(100vw - 40px));
   white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   line-height: 1.5;
+}
+
+.event-map-marker {
+  cursor: pointer;
 }
 
 @media (max-width: 720px) {

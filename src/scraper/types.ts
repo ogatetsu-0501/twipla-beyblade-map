@@ -37,3 +37,15 @@ export type GeocodeResult = {
 };
 
 export type GeocodeCache = Record<string, GeocodeResult | null>;
+
+export type EventCacheEntry = {
+  fingerprint: string;
+  fetchedAt: string;
+  detailSocialLinks: string[];
+  event: EventDetail;
+};
+
+export type EventCacheFile = {
+  schemaVersion: number;
+  events: Record<string, EventCacheEntry>;
+};

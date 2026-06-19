@@ -1,7 +1,7 @@
 const k = ['a7','Qm','2P','x9','Lf','0s','Vr','8N'].join('');
 const z = new TextEncoder();
-const b = (v: Uint8Array): ArrayBuffer => v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength) as ArrayBuffer;
 const y = (v: Uint8Array): string => Buffer.from(v).toString('base64');
+const b = (v: Uint8Array): ArrayBuffer => v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength) as ArrayBuffer;
 const x = async (s: Uint8Array): Promise<CryptoKey> => crypto.subtle.deriveKey(
   { name: 'PBKDF2', hash: 'SHA-256', salt: b(s), iterations: 131071 },
   await crypto.subtle.importKey('raw', b(z.encode(k)), 'PBKDF2', false, ['deriveKey']),

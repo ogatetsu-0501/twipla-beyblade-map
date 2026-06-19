@@ -13,7 +13,7 @@ describe('parseSearchResults', () => {
                 <strong class="black">2026/06/19 19:00</strong>
                 <span class="black">愛知県稲沢市</span>
                 <br />ベイブレード交流会<br />
-                <span style="color:#666">説明文</span>
+                <span class="graysmall">主催者さんが主催</span>
               </span>
             </a>
           </li>

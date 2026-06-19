@@ -32,16 +32,16 @@ jobs:
           node-version: 22
           cache: npm
 
-      # 住所から座標を取得した結果だけを次回実行へ引き継ぎます。
-      - name: Restore geocoding cache
+      # 詳細ページと住所検索の結果を次回実行へ引き継ぎます。
+      - name: Restore scraper cache
         uses: actions/cache@v4
         with:
-          path: .cache/geocode.json
-          key: geocode-${{ runner.os }}-${{ hashFiles('src/scraper/**') }}
+          path: .cache
+          key: scraper-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            geocode-${{ runner.os }}-
+            scraper-${{ runner.os }}-
 
-      # lockファイルに固定された依存関係をインストールします。
+      # GitHub Actions上で安定して動作するnpmを使用します。
       - name: Pin npm version
         run: npm install --global npm@10.9.2
 
@@ -50,8 +50,10 @@ jobs:
           node --version
           npm --version
 
+      # package-lock.jsonを利用して依存関係をインストールします。
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
       # TwiPlaを低速で巡回して、公開用データファイルを生成します。
       - name: Scrape events
         env:
