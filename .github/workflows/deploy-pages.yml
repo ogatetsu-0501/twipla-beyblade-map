@@ -51,7 +51,7 @@ jobs:
           npm --version
 
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
       # TwiPlaを低速で巡回して、公開用データファイルを生成します。
       - name: Scrape events
         env:
