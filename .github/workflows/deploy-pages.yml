@@ -25,15 +25,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Node.jsを準備し、npmのキャッシュを有効にします。
+      # Node.jsを準備し、npmがダウンロードしたパッケージの
+      # キャッシュを有効にします。
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      # 詳細ページと住所検索の結果を次回実行へ引き継ぎます。
+      # イベント詳細と住所検索のキャッシュを復元します。
+      # cache-hitを後続の診断ログで確認できるよう、idを付けます。
       - name: Restore scraper cache
+        id: scraper-cache
         uses: actions/cache@v4
         with:
           path: .cache
@@ -41,18 +44,184 @@ jobs:
           restore-keys: |
             scraper-${{ runner.os }}-
 
-      # GitHub Actions上で安定して動作するnpmを使用します。
+      # 以前成功したnpmバージョンへ固定します。
       - name: Pin npm version
         run: npm install --global npm@10.9.2
 
-      - name: Show runtime versions
+      # npm install前の実行環境と、2種類のキャッシュ状態を記録します。
+      - name: Diagnose environment before install
+        shell: bash
         run: |
+          set -euxo pipefail
+
+          echo "::group::Runtime"
+          echo "runner.os=${{ runner.os }}"
+          echo "github.run_id=${{ github.run_id }}"
+          echo "scraper-cache-hit=${{ steps.scraper-cache.outputs.cache-hit }}"
           node --version
           npm --version
+          echo "::endgroup::"
 
-      # package-lock.jsonを利用して依存関係をインストールします。
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+          echo "::group::npm settings"
+          echo "npm-cache=$(npm config get cache)"
+          echo "npm-registry=$(npm config get registry)"
+          echo "npm-maxsockets=$(npm config get maxsockets)"
+          echo "npm-fetch-retries=$(npm config get fetch-retries)"
+          echo "npm-fetch-timeout=$(npm config get fetch-timeout)"
+          echo "::endgroup::"
+
+          echo "::group::Project files"
+          pwd
+          ls -lah
+          sha256sum package.json
+          sha256sum package-lock.json
+          echo "::endgroup::"
+
+          echo "::group::Scraper cache"
+          if [ -d .cache ]; then
+            du -sh .cache
+            find .cache -maxdepth 2 -type f \
+              -printf '%p %s bytes\n' | sort
+          else
+            echo ".cache directory does not exist"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::npm cache"
+          NPM_CACHE_DIR="$(npm config get cache)"
+          if [ -d "$NPM_CACHE_DIR" ]; then
+            du -sh "$NPM_CACHE_DIR"
+            find "$NPM_CACHE_DIR" -maxdepth 2 -type f \
+              -printf '%p %s bytes\n' | head -n 100
+          else
+            echo "npm cache directory does not exist"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::System resources"
+          df -h
+          free -h
+          ulimit -a
+          echo "::endgroup::"
+
+          echo "::group::Registry connection"
+          curl --fail --silent --show-error \
+            --head --max-time 30 \
+            https://registry.npmjs.org/
+          echo "::endgroup::"
+
+      # npmの詳細ログ、処理時間、システム状態を保存しながら
+      # 依存関係をインストールします。
+      - name: Install dependencies with diagnostics
+        env:
+          NPM_CONFIG_LOGLEVEL: verbose
+          NPM_CONFIG_TIMING: "true"
+          NPM_CONFIG_LOGS_DIR: ${{ runner.temp }}/npm-logs
+        shell: bash
+        run: |
+          set -o pipefail
+
+          mkdir -p "$NPM_CONFIG_LOGS_DIR"
+
+          (
+            while true; do
+              echo "===== $(date --iso-8601=seconds) ====="
+              echo "--- memory ---"
+              free -h
+              echo "--- disk ---"
+              df -h .
+              echo "--- processes ---"
+              ps -eo pid,ppid,%cpu,%mem,etime,args \
+                --sort=-%mem | head -n 25
+              sleep 30
+            done
+          ) > "$RUNNER_TEMP/system-monitor.log" 2>&1 &
+
+          MONITOR_PID=$!
+
+          cleanup_monitor() {
+            kill "$MONITOR_PID" 2>/dev/null || true
+            wait "$MONITOR_PID" 2>/dev/null || true
+          }
+
+          trap cleanup_monitor EXIT
+
+          npm install \
+            --no-audit \
+            --no-fund \
+            --loglevel verbose \
+            --timing \
+            2>&1 | tee "$RUNNER_TEMP/npm-install-console.log"
+
+      # npm installが失敗しても、残されたログをActions画面へ出します。
+      - name: Print dependency diagnostics
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          echo "::group::npm console log"
+          if [ -f "$RUNNER_TEMP/npm-install-console.log" ]; then
+            tail -n 1000 "$RUNNER_TEMP/npm-install-console.log"
+          else
+            echo "npm console log was not created"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::npm debug logs"
+          if [ -d "$RUNNER_TEMP/npm-logs" ]; then
+            find "$RUNNER_TEMP/npm-logs" \
+              -maxdepth 1 -type f -print
+
+            for file in "$RUNNER_TEMP"/npm-logs/*; do
+              if [ -f "$file" ]; then
+                echo "===== $file ====="
+                tail -n 500 "$file"
+              fi
+            done
+          else
+            echo "npm logs directory was not created"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::System monitor"
+          if [ -f "$RUNNER_TEMP/system-monitor.log" ]; then
+            tail -n 1000 "$RUNNER_TEMP/system-monitor.log"
+          else
+            echo "system monitor log was not created"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Final cache state"
+          echo "scraper-cache-hit=${{ steps.scraper-cache.outputs.cache-hit }}"
+
+          if [ -d .cache ]; then
+            du -sh .cache
+            find .cache -maxdepth 2 -type f \
+              -printf '%p %s bytes\n' | sort
+          else
+            echo ".cache directory does not exist"
+          fi
+
+          NPM_CACHE_DIR="$(npm config get cache 2>/dev/null || true)"
+
+          if [ -n "$NPM_CACHE_DIR" ] && [ -d "$NPM_CACHE_DIR" ]; then
+            du -sh "$NPM_CACHE_DIR"
+          else
+            echo "npm cache directory does not exist"
+          fi
+          echo "::endgroup::"
+
+      # Actions画面に収まらない完全な診断ログをartifactとして保存します。
+      - name: Upload dependency diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-diagnostics-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/npm-install-console.log
+            ${{ runner.temp }}/system-monitor.log
+            ${{ runner.temp }}/npm-logs
+          if-no-files-found: warn
+          retention-days: 7
 
       # TwiPlaを低速で巡回して、公開用データファイルを生成します。
       - name: Scrape events
