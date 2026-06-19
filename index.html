@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="TwiPlaに掲載されたベイブレード関連イベントを地図で探す非公式ページです。" />
+    <title>ベイブレードイベントマップ</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">非公式リンク検索</p>
+        <h1>ベイブレードイベントマップ</h1>
+        <p class="lead">マーカーにカーソルを合わせると大会名と開催日時を表示します。クリックするとTwiPlaを開きます。</p>
+      </div>
+      <p id="updated-at" class="updated-at">データを読み込み中です</p>
+    </header>
+
+    <main>
+      <section class="map-section" aria-labelledby="map-heading">
+        <div class="section-heading">
+          <h2 id="map-heading">開催地マップ</h2>
+          <button id="current-location-button" type="button">現在地へ移動</button>
+        </div>
+        <div id="map" aria-label="ベイブレードイベント開催地の地図"></div>
+        <p id="map-status" class="status-message" role="status"></p>
+      </section>
+
+      <section class="unmapped-section" aria-labelledby="unmapped-heading">
+        <div class="section-heading">
+          <h2 id="unmapped-heading">地図に表示できないイベント</h2>
+          <span id="unmapped-count" class="count-badge">0件</span>
+        </div>
+        <div id="unmapped-list" class="event-list"></div>
+      </section>
+
+      <noscript>このページの地図表示にはJavaScriptが必要です。</noscript>
+    </main>
+
+    <footer>
+      <p>各イベントの詳細・参加登録はTwiPlaで確認してください。本サイトはTwiPlaおよび運営会社とは関係のない非公式サイトです。</p>
+    </footer>
+
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>

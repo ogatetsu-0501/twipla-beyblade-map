@@ -1,0 +1,82 @@
+name: Scrape and deploy GitHub Pages
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 毎週月曜日 03:00（日本時間）に相当します。
+    - cron: '0 18 * * 0'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      # リポジトリのソースコードを取得します。
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Node.jsを準備し、npmのキャッシュを有効にします。
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # 住所から座標を取得した結果だけを次回実行へ引き継ぎます。
+      - name: Restore geocoding cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/geocode.json
+          key: geocode-${{ runner.os }}-${{ hashFiles('src/scraper/**') }}
+          restore-keys: |
+            geocode-${{ runner.os }}-
+
+      # lockファイルに固定された依存関係をインストールします。
+      - name: Install dependencies
+        run: npm ci
+
+      # TwiPlaを低速で巡回して、公開用データファイルを生成します。
+      - name: Scrape events
+        env:
+          SCRAPER_USER_AGENT: beyblade-event-map/1.0 (+${{ github.server_url }}/${{ github.repository }})
+          REQUEST_DELAY_MIN_MS: '8000'
+          REQUEST_DELAY_MAX_MS: '15000'
+          SEARCH_LIMIT: '100'
+        run: npm run scrape
+
+      # 型、テスト、静的サイトのビルドを確認します。
+      - name: Verify and build
+        run: npm run check
+
+      # GitHub Pagesの設定を準備します。
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # distだけをPages用artifactとしてアップロードします。
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      # buildジョブで作成したartifactをGitHub Pagesへ公開します。
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
