@@ -69,19 +69,16 @@ describe('geocode query creation', () => {
     ).toBe(true);
   });
 
-  it('部屋名以降を切り捨てて施設名だけで検索する', () => {
+  it('けやきは小田原市を含む施設名で検索する', () => {
     const queries = createGeocodeQueries({
       address: '',
       locationText:
         '生涯学習センターけやき 第二会議室',
-      summaryLocation: '富山県富山市',
+      summaryLocation: '',
     });
 
     expect(queries).toContain(
-      '生涯学習センターけやき',
-    );
-    expect(queries).toContain(
-      '生涯学習センターけやき 富山県富山市',
+      '小田原市生涯学習センターけやき',
     );
     expect(
       queries.some((query) =>

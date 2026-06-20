@@ -15,6 +15,11 @@ type LocationOverrideDefinition = LocationOverride & {
   aliases: string[];
 };
 
+type LocationSearchOverrideDefinition = {
+  aliases: string[];
+  query: string;
+};
+
 const LOCATION_OVERRIDES: LocationOverrideDefinition[] = [
   {
     aliases: [
@@ -28,6 +33,19 @@ const LOCATION_OVERRIDES: LocationOverrideDefinition[] = [
       'Google Mapsの施設登録地点を表示しています',
   },
 ];
+
+
+const LOCATION_SEARCH_OVERRIDES:
+  LocationSearchOverrideDefinition[] = [
+    {
+      aliases: [
+        '生涯学習センターけやき',
+        '小田原市生涯学習センターけやき',
+      ],
+      query:
+        '小田原市生涯学習センターけやき',
+    },
+  ];
 
 const normalizeLocationName = (
   value: string,
@@ -73,4 +91,30 @@ export const findLocationOverride = (
       matchedOverride.locationStatus,
     locationNote: matchedOverride.locationNote,
   };
+};
+
+export const findLocationSearchOverride = (
+  event: Pick<
+    EventDetail,
+    'locationText' | 'address' | 'summaryLocation'
+  >,
+): string | null => {
+  const locationText = normalizeLocationName(
+    [
+      event.locationText,
+      event.address,
+      event.summaryLocation,
+    ].join(' '),
+  );
+
+  const matchedOverride =
+    LOCATION_SEARCH_OVERRIDES.find((definition) =>
+      definition.aliases.some((alias) =>
+        locationText.includes(
+          normalizeLocationName(alias),
+        ),
+      ),
+    );
+
+  return matchedOverride?.query ?? null;
 };

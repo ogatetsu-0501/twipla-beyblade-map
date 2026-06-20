@@ -5,7 +5,10 @@ import {
   GEOCODE_CACHE_FILE_PATH,
   LOCATION_PRIVATE_WORDS,
 } from './constants';
-import { findLocationOverride } from './location-overrides';
+import {
+  findLocationOverride,
+  findLocationSearchOverride,
+} from './location-overrides';
 import type {
   EventDetail,
   GeocodeCache,
@@ -13,7 +16,7 @@ import type {
 } from './types';
 import { normalizeText, waitRandomDelay } from './utils';
 
-const CACHE_KEY_VERSION = 'v5';
+const CACHE_KEY_VERSION = 'v6';
 
 type GeocodePrecision = 'exact' | 'area';
 
@@ -226,7 +229,10 @@ export const createGeocodeCandidates = (
   const address = cleanGeocodeText(event.address);
   const rawVenue = cleanVenueSearchText(event.locationText);
   const simpleVenue = simplifyVenue(event.locationText);
-  const venue = simpleVenue || rawVenue;
+  const searchOverride =
+    findLocationSearchOverride(event);
+  const venue =
+    searchOverride || simpleVenue || rawVenue;
   const summary = cleanGeocodeText(event.summaryLocation);
   const venueIsApproximate =
     hasApproximateLocationWord(event.locationText);

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { findLocationOverride } from '../location-overrides';
+import {
+  findLocationOverride,
+  findLocationSearchOverride,
+} from '../location-overrides';
 
 describe('location overrides', () => {
   it('おもちゃのバンビ本郷店を施設座標へ割り当てる', () => {
@@ -37,4 +40,19 @@ describe('location overrides', () => {
 
     expect(result).toBeNull();
   });
+
+  it('けやきの検索語へ小田原市を補う', () => {
+    const result = findLocationSearchOverride({
+      locationText:
+        '生涯学習センターけやき 第二会議室',
+      address: '',
+      summaryLocation: '',
+    });
+
+    expect(result).toBe(
+      '小田原市生涯学習センターけやき',
+    );
+  });
+
+
 });
