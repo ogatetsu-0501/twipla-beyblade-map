@@ -36,6 +36,8 @@ const createEntry = (
   fingerprint: createEventFingerprint(event),
   fetchedAt,
   detailSocialLinks: [],
+  organizerTwiplaUserId: '',
+  isExcluded: false,
   event: {
     ...baseDetail,
     ...event,
