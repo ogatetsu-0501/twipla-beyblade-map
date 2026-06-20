@@ -190,6 +190,11 @@ footer {
   line-height: 1.5;
 }
 
+
+.event-tooltip-location {
+  color: #445168;
+}
+
 .event-map-marker {
   cursor: pointer;
 }

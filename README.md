@@ -1,11 +1,11 @@
 # ベイブレードイベントマップ
 
-TwiPla上の「ベイブレード」検索結果を週1回取得し、開催場所を地図へ表示する非公式の静的サイトです。
+TwiPla上の「ベイブレード」検索結果を1日1回取得し、開催場所を地図へ表示する非公式の静的サイトです。
 
 ## 主な動作
 
-- GitHub Actionsを毎週月曜日03:00（JST）に実行
-- TwiPlaの検索結果を`limit~100`で取得
+- GitHub Actionsを毎日03:00（JST）に実行
+- TwiPlaの検索結果を`limit~1000`で取得
 - 各イベント詳細を8〜15秒間隔で1件ずつ取得
 - TwiPla内の座標、住所、施設名、詳細本文を順番に解析
 - 座標がなければNominatimで補完
@@ -62,10 +62,10 @@ GitHub Actionsでは次の環境変数を設定しています。
 ```text
 REQUEST_DELAY_MIN_MS=8000
 REQUEST_DELAY_MAX_MS=15000
-SEARCH_LIMIT=100
+SEARCH_LIMIT=1000
 ```
 
-対象が100件なら、詳細取得だけで約13〜25分かかります。403または429を受けた場合は処理を中止します。
+新規または再取得対象が多い場合は、詳細取得に時間がかかります。403または429を受けた場合は処理を中止します。
 
 ## 公開データについて
 
@@ -81,6 +81,27 @@ SEARCH_LIMIT=100
 src/scraper/constants.ts
 .github/workflows/deploy-pages.yml
 ```
+
+
+### 詳細SNSリンクによる除外
+
+非表示対象のXアカウントURLは、次の定数で管理します。
+
+```text
+src/scraper/constants.ts
+EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS
+```
+
+例:
+
+```ts
+export const EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS = [
+  'x.com/takashi',
+  'x.com/another_account',
+];
+```
+
+`twitter.com`のURLも比較時に`x.com`へ正規化されます。
 
 ## 注意事項
 

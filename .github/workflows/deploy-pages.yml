@@ -3,8 +3,8 @@ name: Scrape and deploy GitHub Pages
 on:
   workflow_dispatch:
   schedule:
-    # 毎週月曜日 03:00（日本時間）に相当します。
-    - cron: "0 18 * * 0"
+    # 毎日 03:00（日本時間）に相当します。
+    - cron: "0 18 * * *"
 
 permissions:
   contents: read
@@ -62,7 +62,7 @@ jobs:
             'applied-caas|internal\.api\.openai\.org|openai\.org/artifactory/api/npm' \
             package-lock.json; then
             echo "::error::package-lock.json に外部からアクセスできない内部レジストリURLが残っています。"
-            echo "tools/fix-package-lock.ps1 をローカルで実行し、package-lock.jsonをcommitしてください。"
+            echo "package-lock.jsonを公開npmレジストリで再生成し、commitしてください。"
             grep -Ein \
               'applied-caas|internal\.api\.openai\.org|openai\.org/artifactory/api/npm' \
               package-lock.json | head -n 20
@@ -89,7 +89,7 @@ jobs:
           SCRAPER_USER_AGENT: beyblade-event-map/1.0 (+${{ github.server_url }}/${{ github.repository }})
           REQUEST_DELAY_MIN_MS: "8000"
           REQUEST_DELAY_MAX_MS: "15000"
-          SEARCH_LIMIT: "100"
+          SEARCH_LIMIT: "1000"
         run: npm run scrape
 
       # 型、テスト、静的サイトのビルドを確認します。

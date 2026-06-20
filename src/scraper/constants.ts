@@ -1,7 +1,7 @@
 export const TWIPLA_ORIGIN = 'https://twipla.jp';
 export const SEARCH_KEYWORD = 'ベイブレード';
 export const SEARCH_TARGET = '0';
-export const DEFAULT_SEARCH_LIMIT = 100;
+export const DEFAULT_SEARCH_LIMIT = 1000;
 
 export const DEFAULT_FOCUS_ADDRESS =
   '東京都世田谷区北沢2丁目4−5 mosia 4F';
@@ -25,7 +25,7 @@ export const EVENT_CACHE_REFRESH_WINDOW_DAYS = 14;
  * URLは小文字化し、twitter.comはx.comとして比較します。
  */
 export const EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS = [
-  'x.com/takashi',
+  'https://x.com/Takashi_cos09',
 ];
 
 export const LOCATION_PRIVATE_WORDS = [

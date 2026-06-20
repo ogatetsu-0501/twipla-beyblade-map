@@ -2,17 +2,26 @@ import L, { type Map } from 'leaflet';
 
 import 'leaflet/dist/leaflet.css';
 
-import type { EventData, PublishedPayload } from './types';
+import type {
+  EventData,
+  PublishedPayload,
+} from './types';
 
 const DEFAULT_ZOOM = 13;
 const JAPAN_ZOOM = 5;
 const NEAR_EVENT_DAYS = 7;
 const FAR_EVENT_DAYS = 45;
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+const MILLISECONDS_PER_DAY =
+  24 * 60 * 60 * 1000;
+const NEARBY_MARKER_DISTANCE_METERS = 60;
+const MARKER_HORIZONTAL_OFFSET_PIXELS = 18;
 
-/**
- * HTMLとして表示する文字列を安全な文字参照へ変換します。
- */
+type MarkerPlacementGroup = {
+  latitude: number;
+  longitude: number;
+  markerCount: number;
+};
+
 const escapeHtml = (value: string): string =>
   value
     .replaceAll('&', '&amp;')
@@ -21,9 +30,6 @@ const escapeHtml = (value: string): string =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
 
-/**
- * 開催日を日本時間のDateへ変換します。
- */
 const parseEventDate = (
   startsAtText: string,
 ): Date | null => {
@@ -44,13 +50,11 @@ const parseEventDate = (
   );
 };
 
-/**
- * 開催日が近いほど赤、遠いほど青になる色を作ります。
- */
 const createEventMarkerColors = (
   startsAtText: string,
 ): { fillColor: string; color: string } => {
-  const eventDate = parseEventDate(startsAtText);
+  const eventDate =
+    parseEventDate(startsAtText);
 
   if (!eventDate) {
     return {
@@ -71,10 +75,13 @@ const createEventMarkerColors = (
     Math.max(
       0,
       (daysUntilEvent - NEAR_EVENT_DAYS) /
-        (FAR_EVENT_DAYS - NEAR_EVENT_DAYS),
+        (FAR_EVENT_DAYS -
+          NEAR_EVENT_DAYS),
     ),
   );
-  const hue = Math.round(215 * normalizedDistance);
+  const hue = Math.round(
+    215 * normalizedDistance,
+  );
 
   return {
     fillColor: `hsl(${hue} 82% 52%)`,
@@ -82,16 +89,89 @@ const createEventMarkerColors = (
   };
 };
 
-/**
- * 現在地へ移動できない場合に表示するメッセージを決めます。
- */
+const toRadians = (degrees: number): number =>
+  (degrees * Math.PI) / 180;
+
+const calculateDistanceMeters = (
+  latitudeA: number,
+  longitudeA: number,
+  latitudeB: number,
+  longitudeB: number,
+): number => {
+  const earthRadiusMeters = 6_371_000;
+  const latitudeDelta = toRadians(
+    latitudeB - latitudeA,
+  );
+  const longitudeDelta = toRadians(
+    longitudeB - longitudeA,
+  );
+  const startLatitude =
+    toRadians(latitudeA);
+  const endLatitude =
+    toRadians(latitudeB);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(startLatitude) *
+      Math.cos(endLatitude) *
+      Math.sin(longitudeDelta / 2) ** 2;
+
+  return (
+    2 *
+    earthRadiusMeters *
+    Math.asin(Math.sqrt(haversine))
+  );
+};
+
+const takeMarkerHorizontalOffset = (
+  latitude: number,
+  longitude: number,
+  groups: MarkerPlacementGroup[],
+): number => {
+  const nearbyGroup = groups.find(
+    (group) =>
+      calculateDistanceMeters(
+        latitude,
+        longitude,
+        group.latitude,
+        group.longitude,
+      ) <= NEARBY_MARKER_DISTANCE_METERS,
+  );
+
+  if (!nearbyGroup) {
+    groups.push({
+      latitude,
+      longitude,
+      markerCount: 1,
+    });
+
+    return 0;
+  }
+
+  const offset =
+    nearbyGroup.markerCount *
+    MARKER_HORIZONTAL_OFFSET_PIXELS;
+  nearbyGroup.markerCount += 1;
+
+  return offset;
+};
+
+const createTooltipLocation = (
+  event: EventData,
+): string =>
+  event.locationText ||
+  event.address ||
+  event.summaryLocation ||
+  '場所情報なし';
+
 const createGeolocationErrorMessage = (
   error: GeolocationPositionError,
 ): string => {
   const isPermissionDenied =
-    error.code === GeolocationPositionError.PERMISSION_DENIED;
+    error.code ===
+    GeolocationPositionError.PERMISSION_DENIED;
   const isTimeout =
-    error.code === GeolocationPositionError.TIMEOUT;
+    error.code ===
+    GeolocationPositionError.TIMEOUT;
 
   if (isPermissionDenied) {
     return '現在地の利用が許可されなかったため、既定の場所を表示しています。';
@@ -104,14 +184,12 @@ const createGeolocationErrorMessage = (
   return '現在地を利用できないため、既定の場所を表示しています。';
 };
 
-/**
- * 利用者の現在地を取得し、成功時だけ地図を移動します。
- */
 const focusCurrentLocation = (
   map: Map,
   statusElement: HTMLElement,
 ): void => {
-  const canUseGeolocation = !!navigator.geolocation;
+  const canUseGeolocation =
+    !!navigator.geolocation;
 
   if (!canUseGeolocation) {
     statusElement.textContent =
@@ -119,7 +197,8 @@ const focusCurrentLocation = (
     return;
   }
 
-  statusElement.textContent = '現在地を取得しています。';
+  statusElement.textContent =
+    '現在地を取得しています。';
 
   navigator.geolocation.getCurrentPosition(
     (position) => {
@@ -152,14 +231,13 @@ const focusCurrentLocation = (
   );
 };
 
-/**
- * 座標を持つイベントを円形マーカーとして追加します。
- */
 const addEventMarkers = (
   map: Map,
   events: EventData[],
 ): number => {
   let markerCount = 0;
+  const placementGroups:
+    MarkerPlacementGroup[] = [];
 
   for (const event of events) {
     if (
@@ -169,9 +247,16 @@ const addEventMarkers = (
       continue;
     }
 
-    const markerColors = createEventMarkerColors(
-      event.startsAtText,
-    );
+    const horizontalOffset =
+      takeMarkerHorizontalOffset(
+        event.latitude,
+        event.longitude,
+        placementGroups,
+      );
+    const markerColors =
+      createEventMarkerColors(
+        event.startsAtText,
+      );
     const marker = L.circleMarker(
       [event.latitude, event.longitude],
       {
@@ -185,11 +270,15 @@ const addEventMarkers = (
     const tooltipHtml = [
       `<strong>${escapeHtml(event.title)}</strong>`,
       escapeHtml(event.startsAtText),
+      `<span class="event-tooltip-location">場所：${escapeHtml(
+        createTooltipLocation(event),
+      )}</span>`,
     ].join('<br>');
 
     marker.bindTooltip(tooltipHtml, {
       direction: 'top',
       sticky: true,
+      offset: L.point(horizontalOffset, 0),
       className: 'event-tooltip',
     });
     marker.on('click', () => {
@@ -199,9 +288,20 @@ const addEventMarkers = (
         'noopener,noreferrer',
       );
     });
-    marker.getElement()?.classList.add(
-      'event-map-marker',
-    );
+
+    const markerElement =
+      marker.getElement() as SVGElement | null;
+
+    if (markerElement) {
+      markerElement.classList.add(
+        'event-map-marker',
+      );
+
+      if (horizontalOffset > 0) {
+        markerElement.style.transform =
+          `translateX(${horizontalOffset}px)`;
+      }
+    }
 
     markerCount += 1;
   }
@@ -209,16 +309,17 @@ const addEventMarkers = (
   return markerCount;
 };
 
-/**
- * 地図、マーカー、現在地ボタンを初期化します。
- */
 export const initializeMap = (
   payload: PublishedPayload,
 ): void => {
   const mapElement =
-    document.querySelector<HTMLElement>('#map');
+    document.querySelector<HTMLElement>(
+      '#map',
+    );
   const statusElement =
-    document.querySelector<HTMLElement>('#map-status');
+    document.querySelector<HTMLElement>(
+      '#map-status',
+    );
   const currentLocationButton =
     document.querySelector<HTMLButtonElement>(
       '#current-location-button',
@@ -229,7 +330,9 @@ export const initializeMap = (
     !!currentLocationButton;
 
   if (!hasRequiredElements) {
-    throw new Error('地図の表示要素が見つかりません');
+    throw new Error(
+      '地図の表示要素が見つかりません',
+    );
   }
 
   const defaultCenter: L.LatLngExpression = [
@@ -256,15 +359,24 @@ export const initializeMap = (
   );
 
   if (markerCount === 0) {
-    map.setView(defaultCenter, JAPAN_ZOOM);
+    map.setView(
+      defaultCenter,
+      JAPAN_ZOOM,
+    );
   }
 
   currentLocationButton.addEventListener(
     'click',
     () => {
-      focusCurrentLocation(map, statusElement);
+      focusCurrentLocation(
+        map,
+        statusElement,
+      );
     },
   );
 
-  focusCurrentLocation(map, statusElement);
+  focusCurrentLocation(
+    map,
+    statusElement,
+  );
 };

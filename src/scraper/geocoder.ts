@@ -5,6 +5,7 @@ import {
   GEOCODE_CACHE_FILE_PATH,
   LOCATION_PRIVATE_WORDS,
 } from './constants';
+import { findLocationOverride } from './location-overrides';
 import type {
   EventDetail,
   GeocodeCache,
@@ -12,7 +13,7 @@ import type {
 } from './types';
 import { normalizeText, waitRandomDelay } from './utils';
 
-const CACHE_KEY_VERSION = 'v3';
+const CACHE_KEY_VERSION = 'v4';
 
 type GeocodePrecision = 'exact' | 'area';
 
@@ -141,6 +142,7 @@ const cleanGeocodeText = (value: string): string =>
   normalizeText(value.normalize('NFKC'))
     .replace(/https?:\/\/\S+/gi, '')
     .replace(/〒\s*\d{3}-?\d{4}/g, '')
+    .replace(/[（(][^（）()]*[）)]/gu, ' ')
     .replace(/(?:※|⚠️?).*$/u, '')
     .replace(/(?:■|●|◆)(?:住所|駐車場|参加費|定員|注意).*$/u, '')
     .replace(/[「」『』【】]/g, ' ')
@@ -148,11 +150,29 @@ const cleanGeocodeText = (value: string): string =>
     .trim()
     .slice(0, 140);
 
+const APPROXIMATE_LOCATION_WORD_PATTERN =
+  /(?:付近|近辺|周辺|周り|近く)/gu;
+
+const hasApproximateLocationWord = (
+  value: string,
+): boolean =>
+  /(?:付近|近辺|周辺|周り|近く)/u.test(
+    cleanGeocodeText(value),
+  );
+
+const cleanVenueSearchText = (
+  value: string,
+): string =>
+  cleanGeocodeText(value)
+    .replace(APPROXIMATE_LOCATION_WORD_PATTERN, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 /**
  * 部屋名や階数を外した施設名候補を作ります。
  */
 const simplifyVenue = (value: string): string =>
-  cleanGeocodeText(value)
+  cleanVenueSearchText(value)
     .replace(
       /\s+(?:第?\d+|[一二三四五六七八九十]+)?(?:階|室|会議室|研修室|展示室|多目的室|マルチルーム|セレスホール).*$/u,
       '',
@@ -191,7 +211,7 @@ const extractAdministrativeAreas = (
  * 地域名だけの文字列かを判定します。
  */
 const isAreaOnlyText = (value: string): boolean =>
-  /(?:都|道|府|県|市|区|町|村|周辺|近辺|駅前)$/.test(
+  /(?:都|道|府|県|市|区|町|村)$/.test(
     cleanGeocodeText(value),
   );
 
@@ -205,9 +225,13 @@ export const createGeocodeCandidates = (
   >,
 ): GeocodeCandidate[] => {
   const address = cleanGeocodeText(event.address);
-  const venue = cleanGeocodeText(event.locationText);
+  const venue = cleanVenueSearchText(event.locationText);
   const simpleVenue = simplifyVenue(event.locationText);
   const summary = cleanGeocodeText(event.summaryLocation);
+  const venueIsApproximate =
+    hasApproximateLocationWord(event.locationText);
+  const venuePrecision: GeocodePrecision =
+    venueIsApproximate ? 'area' : 'exact';
   const exactCandidates: GeocodeCandidate[] = [
     { query: address, precision: 'exact' },
     {
@@ -227,26 +251,28 @@ export const createGeocodeCandidates = (
         venue && summary && venue !== summary
           ? `${venue} ${summary}`
           : '',
-      precision: 'exact',
+      precision: venuePrecision,
     },
     {
       query:
         simpleVenue && summary && simpleVenue !== summary
           ? `${simpleVenue} ${summary}`
           : '',
-      precision: 'exact',
+      precision: venuePrecision,
     },
     {
       query: simpleVenue,
-      precision: isAreaOnlyText(simpleVenue)
-        ? 'area'
-        : 'exact',
+      precision:
+        venueIsApproximate || isAreaOnlyText(simpleVenue)
+          ? 'area'
+          : 'exact',
     },
     {
       query: venue,
-      precision: isAreaOnlyText(venue)
-        ? 'area'
-        : 'exact',
+      precision:
+        venueIsApproximate || isAreaOnlyText(venue)
+          ? 'area'
+          : 'exact',
     },
     {
       query: summary,
@@ -356,6 +382,20 @@ export const geocodeEvents = async (
   const resolvedEvents: EventDetail[] = [];
 
   for (const event of events) {
+    const locationOverride =
+      findLocationOverride(event);
+
+    if (locationOverride) {
+      resolvedEvents.push({
+        ...event,
+        ...locationOverride,
+      });
+      console.log(
+        `固定座標を適用しました: ${event.locationText}`,
+      );
+      continue;
+    }
+
     const hasCoordinates =
       event.latitude !== null && event.longitude !== null;
     const normalizedLocation =
@@ -363,8 +403,16 @@ export const geocodeEvents = async (
     const isPrivateLocation = LOCATION_PRIVATE_WORDS.some(
       (word) => normalizedLocation.includes(word),
     );
+    const isApproximateLocation =
+      hasApproximateLocationWord(event.locationText);
+    const publicVenueSearchText =
+      cleanVenueSearchText(event.locationText);
+    const hasPublicApproximateVenue =
+      isApproximateLocation &&
+      publicVenueSearchText.length >= 2;
     const canGeocode =
-      !hasCoordinates && !isPrivateLocation;
+      !hasCoordinates &&
+      (!isPrivateLocation || hasPublicApproximateVenue);
 
     if (!canGeocode) {
       resolvedEvents.push(event);
@@ -407,7 +455,9 @@ export const geocodeEvents = async (
         ? 'area'
         : 'exact',
       locationNote: isRepresentativePoint
-        ? '施設の正確な座標を取得できなかったため、地域の代表地点を表示しています'
+        ? isApproximateLocation
+          ? '「付近・近辺・周辺」などを除いた施設名や駅名の代表地点を表示しています'
+          : '施設の正確な座標を取得できなかったため、地域の代表地点を表示しています'
         : '',
     });
   }

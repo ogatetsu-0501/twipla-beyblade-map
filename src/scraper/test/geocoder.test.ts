@@ -42,4 +42,32 @@ describe('geocode query creation', () => {
       ),
     ).toBe(true);
   });
+
+  it('付近・近辺・周辺と注釈を除いて駅名を検索する', () => {
+    const candidates = createGeocodeCandidates({
+      address: '',
+      locationText:
+        'JR川崎駅近辺（Discordで確認）',
+      summaryLocation: '神奈川県川崎市',
+    });
+    const queries = candidates.map(
+      (candidate) => candidate.query,
+    );
+
+    expect(queries).toContain('JR川崎駅');
+    expect(
+      queries.some((query) =>
+        /付近|近辺|周辺|Discord/i.test(query),
+      ),
+    ).toBe(false);
+    expect(
+      candidates.some(
+        (candidate) =>
+          candidate.query === 'JR川崎駅' &&
+          candidate.precision === 'area',
+      ),
+    ).toBe(true);
+  });
+
+
 });
