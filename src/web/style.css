@@ -199,6 +199,67 @@ footer {
   cursor: pointer;
 }
 
+.event-group-marker-wrapper {
+  border: 0;
+  background: transparent;
+}
+
+.event-group-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--event-marker-border);
+  border-radius: 50%;
+  color: #ffffff;
+  background: var(--event-marker-fill);
+  box-shadow: 0 3px 10px rgb(23 32 51 / 32%);
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 55%);
+  cursor: pointer;
+}
+
+.event-group-popup {
+  line-height: 1.45;
+}
+
+.event-group-popup-count {
+  margin-top: 0.25rem;
+  color: #65718a;
+  font-size: 0.85rem;
+}
+
+.event-group-popup ul {
+  max-height: 280px;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.event-group-popup li {
+  padding: 0.65rem 0;
+  border-top: 1px solid #e3e7ef;
+}
+
+.event-group-popup li:first-child {
+  border-top: 0;
+}
+
+.event-group-popup a {
+  font-weight: 700;
+}
+
+.event-group-popup-date,
+.event-group-popup-location {
+  margin-top: 0.2rem;
+  color: #65718a;
+  font-size: 0.82rem;
+}
+
 @media (max-width: 720px) {
   .site-header {
     display: block;

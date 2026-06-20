@@ -15,18 +15,24 @@ export const OUTPUT_FILE_PATH = 'public/data/events.bin';
 export const GEOCODE_CACHE_FILE_PATH = '.cache/geocode.json';
 export const EVENT_CACHE_FILE_PATH = '.cache/events.json';
 
-export const EVENT_CACHE_SCHEMA_VERSION = 2;
+export const EVENT_CACHE_SCHEMA_VERSION = 3;
 export const EVENT_CACHE_MAX_AGE_DAYS = 28;
 export const EVENT_CACHE_REFRESH_WINDOW_DAYS = 14;
 
 
 /**
- * 詳細本文内のSNSリンクで除外する場合に追加します。
+ * 主催者のTwiPlaユーザーIDで除外する場合に追加します。
+ * 大文字小文字は区別せず、/users/より後ろのIDだけを比較します。
+ */
+export const EXCLUDED_TWIPLA_USER_IDS = [
+  'Takashi_cos09',
+];
+
+/**
+ * 詳細本文内のSNSリンクでも除外したい場合に追加します。
  * URLは小文字化し、twitter.comはx.comとして比較します。
  */
-export const EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS = [
-  'https://x.com/Takashi_cos09',
-];
+export const EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS: string[] = [];
 
 export const LOCATION_PRIVATE_WORDS = [
   'discord',

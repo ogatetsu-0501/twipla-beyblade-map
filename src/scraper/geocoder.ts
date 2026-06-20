@@ -13,7 +13,7 @@ import type {
 } from './types';
 import { normalizeText, waitRandomDelay } from './utils';
 
-const CACHE_KEY_VERSION = 'v4';
+const CACHE_KEY_VERSION = 'v5';
 
 type GeocodePrecision = 'exact' | 'area';
 
@@ -171,13 +171,12 @@ const cleanVenueSearchText = (
 /**
  * 部屋名や階数を外した施設名候補を作ります。
  */
+const VENUE_DETAIL_SUFFIX_PATTERN =
+  /\s+(?:(?:第)?(?:\d+|[一二三四五六七八九十百]+))?(?:階|F|会議室|研修室|展示室|多目的室|和室|洋室|実習室|講義室|視聴覚室|集会室|セミナールーム|マルチルーム|セレスホール|大ホール|小ホール|ホール|ルーム).*$/iu;
+
 const simplifyVenue = (value: string): string =>
   cleanVenueSearchText(value)
-    .replace(
-      /\s+(?:第?\d+|[一二三四五六七八九十]+)?(?:階|室|会議室|研修室|展示室|多目的室|マルチルーム|セレスホール).*$/u,
-      '',
-    )
-    .replace(/\s+\d+F.*$/iu, '')
+    .replace(VENUE_DETAIL_SUFFIX_PATTERN, '')
     .trim();
 
 /**
@@ -225,8 +224,9 @@ export const createGeocodeCandidates = (
   >,
 ): GeocodeCandidate[] => {
   const address = cleanGeocodeText(event.address);
-  const venue = cleanVenueSearchText(event.locationText);
+  const rawVenue = cleanVenueSearchText(event.locationText);
   const simpleVenue = simplifyVenue(event.locationText);
+  const venue = simpleVenue || rawVenue;
   const summary = cleanGeocodeText(event.summaryLocation);
   const venueIsApproximate =
     hasApproximateLocationWord(event.locationText);
@@ -241,31 +241,10 @@ export const createGeocodeCandidates = (
     },
     {
       query:
-        simpleVenue && address
-          ? `${simpleVenue} ${address}`
-          : '',
-      precision: 'exact',
-    },
-    {
-      query:
         venue && summary && venue !== summary
           ? `${venue} ${summary}`
           : '',
       precision: venuePrecision,
-    },
-    {
-      query:
-        simpleVenue && summary && simpleVenue !== summary
-          ? `${simpleVenue} ${summary}`
-          : '',
-      precision: venuePrecision,
-    },
-    {
-      query: simpleVenue,
-      precision:
-        venueIsApproximate || isAreaOnlyText(simpleVenue)
-          ? 'area'
-          : 'exact',
     },
     {
       query: venue,

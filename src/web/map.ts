@@ -13,13 +13,12 @@ const NEAR_EVENT_DAYS = 7;
 const FAR_EVENT_DAYS = 45;
 const MILLISECONDS_PER_DAY =
   24 * 60 * 60 * 1000;
-const NEARBY_MARKER_DISTANCE_METERS = 60;
-const MARKER_HORIZONTAL_OFFSET_PIXELS = 18;
+const GROUP_DISTANCE_METERS = 25;
 
-type MarkerPlacementGroup = {
+type EventMarkerGroup = {
   latitude: number;
   longitude: number;
-  markerCount: number;
+  events: EventData[];
 };
 
 const escapeHtml = (value: string): string =>
@@ -122,39 +121,6 @@ const calculateDistanceMeters = (
   );
 };
 
-const takeMarkerHorizontalOffset = (
-  latitude: number,
-  longitude: number,
-  groups: MarkerPlacementGroup[],
-): number => {
-  const nearbyGroup = groups.find(
-    (group) =>
-      calculateDistanceMeters(
-        latitude,
-        longitude,
-        group.latitude,
-        group.longitude,
-      ) <= NEARBY_MARKER_DISTANCE_METERS,
-  );
-
-  if (!nearbyGroup) {
-    groups.push({
-      latitude,
-      longitude,
-      markerCount: 1,
-    });
-
-    return 0;
-  }
-
-  const offset =
-    nearbyGroup.markerCount *
-    MARKER_HORIZONTAL_OFFSET_PIXELS;
-  nearbyGroup.markerCount += 1;
-
-  return offset;
-};
-
 const createTooltipLocation = (
   event: EventData,
 ): string =>
@@ -162,6 +128,248 @@ const createTooltipLocation = (
   event.address ||
   event.summaryLocation ||
   '場所情報なし';
+
+const sortEventsByDate = (
+  events: EventData[],
+): EventData[] =>
+  [...events].sort((eventA, eventB) =>
+    eventA.startsAtText.localeCompare(
+      eventB.startsAtText,
+      'ja',
+    ),
+  );
+
+const groupEventsByLocation = (
+  events: EventData[],
+): EventMarkerGroup[] => {
+  const groups: EventMarkerGroup[] = [];
+
+  for (const event of sortEventsByDate(events)) {
+    if (
+      event.latitude === null ||
+      event.longitude === null
+    ) {
+      continue;
+    }
+
+    const matchedGroup = groups.find(
+      (group) =>
+        calculateDistanceMeters(
+          event.latitude as number,
+          event.longitude as number,
+          group.latitude,
+          group.longitude,
+        ) <= GROUP_DISTANCE_METERS,
+    );
+
+    if (matchedGroup) {
+      matchedGroup.events.push(event);
+      continue;
+    }
+
+    groups.push({
+      latitude: event.latitude,
+      longitude: event.longitude,
+      events: [event],
+    });
+  }
+
+  return groups;
+};
+
+const createGroupLocationLabel = (
+  events: EventData[],
+): string => {
+  const locations = [
+    ...new Set(
+      events.map(createTooltipLocation),
+    ),
+  ];
+
+  if (locations.length <= 1) {
+    return locations[0] ?? '場所情報なし';
+  }
+
+  return `${locations[0]} ほか${
+    locations.length - 1
+  }会場`;
+};
+
+const createEventTooltipHtml = (
+  event: EventData,
+): string =>
+  [
+    `<strong>${escapeHtml(event.title)}</strong>`,
+    escapeHtml(event.startsAtText),
+    `<span class="event-tooltip-location">場所：${escapeHtml(
+      createTooltipLocation(event),
+    )}</span>`,
+  ].join('<br>');
+
+const createGroupTooltipHtml = (
+  events: EventData[],
+): string => {
+  const sortedEvents = sortEventsByDate(events);
+  const firstEvent = sortedEvents[0];
+  const firstDate =
+    firstEvent?.startsAtText ?? '';
+
+  return [
+    `<strong>${escapeHtml(
+      createGroupLocationLabel(sortedEvents),
+    )}</strong>`,
+    `${sortedEvents.length}件のイベント`,
+    firstDate
+      ? `直近：${escapeHtml(firstDate)}`
+      : '',
+    'クリックで一覧を表示',
+  ]
+    .filter(Boolean)
+    .join('<br>');
+};
+
+const createGroupPopupHtml = (
+  events: EventData[],
+): string => {
+  const sortedEvents = sortEventsByDate(events);
+  const groupLocation =
+    createGroupLocationLabel(sortedEvents);
+  const uniqueLocationCount = new Set(
+    sortedEvents.map(createTooltipLocation),
+  ).size;
+  const listItems = sortedEvents
+    .map((event) => {
+      const locationLine =
+        uniqueLocationCount > 1
+          ? `<div class="event-group-popup-location">場所：${escapeHtml(
+              createTooltipLocation(event),
+            )}</div>`
+          : '';
+
+      return [
+        '<li>',
+        `<a href="${escapeHtml(
+          event.eventUrl,
+        )}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+          event.title,
+        )}</a>`,
+        `<div class="event-group-popup-date">${escapeHtml(
+          event.startsAtText,
+        )}</div>`,
+        locationLine,
+        '</li>',
+      ].join('');
+    })
+    .join('');
+
+  return [
+    '<div class="event-group-popup">',
+    `<strong>${escapeHtml(
+      groupLocation,
+    )}</strong>`,
+    `<div class="event-group-popup-count">${sortedEvents.length}件のイベント</div>`,
+    `<ul>${listItems}</ul>`,
+    '</div>',
+  ].join('');
+};
+
+const addSingleEventMarker = (
+  map: Map,
+  event: EventData,
+  latitude: number,
+  longitude: number,
+): void => {
+  const markerColors =
+    createEventMarkerColors(
+      event.startsAtText,
+    );
+  const marker = L.circleMarker(
+    [latitude, longitude],
+    {
+      radius: 8,
+      weight: 2,
+      fillOpacity: 0.9,
+      fillColor: markerColors.fillColor,
+      color: markerColors.color,
+    },
+  ).addTo(map);
+
+  marker.bindTooltip(
+    createEventTooltipHtml(event),
+    {
+      direction: 'top',
+      sticky: true,
+      className: 'event-tooltip',
+    },
+  );
+  marker.on('click', () => {
+    window.open(
+      event.eventUrl,
+      '_blank',
+      'noopener,noreferrer',
+    );
+  });
+  marker
+    .getElement()
+    ?.classList.add('event-map-marker');
+};
+
+const addGroupedEventMarker = (
+  map: Map,
+  group: EventMarkerGroup,
+): void => {
+  const sortedEvents =
+    sortEventsByDate(group.events);
+  const firstEvent = sortedEvents[0];
+
+  if (!firstEvent) {
+    return;
+  }
+
+  const markerColors =
+    createEventMarkerColors(
+      firstEvent.startsAtText,
+    );
+  const countText =
+    sortedEvents.length > 99
+      ? '99+'
+      : String(sortedEvents.length);
+  const marker = L.marker(
+    [group.latitude, group.longitude],
+    {
+      icon: L.divIcon({
+        className:
+          'event-group-marker-wrapper',
+        html: [
+          '<span',
+          ' class="event-group-marker"',
+          ` style="--event-marker-fill:${markerColors.fillColor};--event-marker-border:${markerColors.color}"`,
+          `>${countText}</span>`,
+        ].join(''),
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      }),
+      keyboard: true,
+      title: `${sortedEvents.length}件のイベント`,
+    },
+  ).addTo(map);
+
+  marker.bindTooltip(
+    createGroupTooltipHtml(sortedEvents),
+    {
+      direction: 'top',
+      sticky: true,
+      className: 'event-tooltip',
+    },
+  );
+  marker.bindPopup(
+    createGroupPopupHtml(sortedEvents),
+    {
+      maxWidth: 380,
+      minWidth: 280,
+    },
+  );
+};
 
 const createGeolocationErrorMessage = (
   error: GeolocationPositionError,
@@ -235,78 +443,29 @@ const addEventMarkers = (
   map: Map,
   events: EventData[],
 ): number => {
-  let markerCount = 0;
-  const placementGroups:
-    MarkerPlacementGroup[] = [];
+  const groups =
+    groupEventsByLocation(events);
 
-  for (const event of events) {
-    if (
-      event.latitude === null ||
-      event.longitude === null
-    ) {
+  for (const group of groups) {
+    if (group.events.length === 1) {
+      const event = group.events[0];
+
+      if (event) {
+        addSingleEventMarker(
+          map,
+          event,
+          group.latitude,
+          group.longitude,
+        );
+      }
+
       continue;
     }
 
-    const horizontalOffset =
-      takeMarkerHorizontalOffset(
-        event.latitude,
-        event.longitude,
-        placementGroups,
-      );
-    const markerColors =
-      createEventMarkerColors(
-        event.startsAtText,
-      );
-    const marker = L.circleMarker(
-      [event.latitude, event.longitude],
-      {
-        radius: 8,
-        weight: 2,
-        fillOpacity: 0.9,
-        fillColor: markerColors.fillColor,
-        color: markerColors.color,
-      },
-    ).addTo(map);
-    const tooltipHtml = [
-      `<strong>${escapeHtml(event.title)}</strong>`,
-      escapeHtml(event.startsAtText),
-      `<span class="event-tooltip-location">場所：${escapeHtml(
-        createTooltipLocation(event),
-      )}</span>`,
-    ].join('<br>');
-
-    marker.bindTooltip(tooltipHtml, {
-      direction: 'top',
-      sticky: true,
-      offset: L.point(horizontalOffset, 0),
-      className: 'event-tooltip',
-    });
-    marker.on('click', () => {
-      window.open(
-        event.eventUrl,
-        '_blank',
-        'noopener,noreferrer',
-      );
-    });
-
-    const markerElement =
-      marker.getElement() as SVGElement | null;
-
-    if (markerElement) {
-      markerElement.classList.add(
-        'event-map-marker',
-      );
-
-      if (horizontalOffset > 0) {
-        markerElement.style.transform =
-          `translateX(${horizontalOffset}px)`;
-      }
-    }
-
-    markerCount += 1;
+    addGroupedEventMarker(map, group);
   }
 
-  return markerCount;
+  return groups.length;
 };
 
 export const initializeMap = (

@@ -42,6 +42,8 @@ export type EventCacheEntry = {
   fingerprint: string;
   fetchedAt: string;
   detailSocialLinks: string[];
+  organizerTwiplaUserId: string;
+  isExcluded: boolean;
   event: EventDetail;
 };
 

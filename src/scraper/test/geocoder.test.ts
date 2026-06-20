@@ -69,5 +69,24 @@ describe('geocode query creation', () => {
     ).toBe(true);
   });
 
+  it('部屋名以降を切り捨てて施設名だけで検索する', () => {
+    const queries = createGeocodeQueries({
+      address: '',
+      locationText:
+        '生涯学習センターけやき 第二会議室',
+      summaryLocation: '富山県富山市',
+    });
 
+    expect(queries).toContain(
+      '生涯学習センターけやき',
+    );
+    expect(queries).toContain(
+      '生涯学習センターけやき 富山県富山市',
+    );
+    expect(
+      queries.some((query) =>
+        query.includes('第二会議室'),
+      ),
+    ).toBe(false);
+  });
 });

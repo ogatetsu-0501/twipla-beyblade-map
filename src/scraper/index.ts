@@ -13,7 +13,9 @@ import {
 import { parseEventDetail } from './detail-parser';
 import {
   extractDetailSocialLinks,
+  extractOrganizerTwiplaUserId,
   isExcludedByDetailSocialLinks,
+  isExcludedByOrganizerTwiplaUserId,
 } from './exclusions';
 import {
   createEventFingerprint,
@@ -106,6 +108,8 @@ type ResolvedDetail = {
   event: EventDetail;
   fetchedAt: string;
   detailSocialLinks: string[];
+  organizerTwiplaUserId: string;
+  isExcluded: boolean;
 };
 
 /**
@@ -123,26 +127,32 @@ const resolveAllDetails = async (
   let skippedCount = 0;
   let excludedCount = 0;
 
-  for (const [index, searchEvent] of searchEvents.entries()) {
-    const cacheEntry = cache.events[searchEvent.eventId];
-    const shouldRefresh = shouldRefreshCachedEvent(
-      searchEvent,
-      cacheEntry,
-      now,
-    );
+  for (
+    const [index, searchEvent]
+      of searchEvents.entries()
+  ) {
+    const cacheEntry =
+      cache.events[searchEvent.eventId];
+    const shouldRefresh =
+      shouldRefreshCachedEvent(
+        searchEvent,
+        cacheEntry,
+        now,
+      );
 
     if (!shouldRefresh && cacheEntry) {
-      if (
+      const organizerExcluded =
+        isExcludedByOrganizerTwiplaUserId(
+          cacheEntry.organizerTwiplaUserId,
+        );
+      const socialLinkExcluded =
         isExcludedByDetailSocialLinks(
           cacheEntry.detailSocialLinks,
-        )
-      ) {
-        excludedCount += 1;
-        console.log(
-          `詳細SNSリンクの除外設定によりスキップします: ${searchEvent.eventUrl}`,
         );
-        continue;
-      }
+      const isExcluded =
+        cacheEntry.isExcluded ||
+        organizerExcluded ||
+        socialLinkExcluded;
 
       resolvedDetails.push({
         event: mergeCachedEvent(
@@ -152,11 +162,23 @@ const resolveAllDetails = async (
         fetchedAt: cacheEntry.fetchedAt,
         detailSocialLinks:
           cacheEntry.detailSocialLinks,
+        organizerTwiplaUserId:
+          cacheEntry.organizerTwiplaUserId,
+        isExcluded,
       });
       skippedCount += 1;
-      console.log(
-        `詳細取得をスキップします (${index + 1}/${searchEvents.length}): ${searchEvent.eventUrl}`,
-      );
+
+      if (isExcluded) {
+        excludedCount += 1;
+        console.log(
+          `キャッシュ済みの除外イベントをスキップします: ${searchEvent.eventUrl} organizer=${cacheEntry.organizerTwiplaUserId}`,
+        );
+      } else {
+        console.log(
+          `詳細取得をスキップします (${index + 1}/${searchEvents.length}): ${searchEvent.eventUrl}`,
+        );
+      }
+
       continue;
     }
 
@@ -165,38 +187,59 @@ const resolveAllDetails = async (
     );
 
     try {
-      const html = await client.getText(searchEvent.eventUrl);
+      const html = await client.getText(
+        searchEvent.eventUrl,
+      );
       const detailSocialLinks =
         extractDetailSocialLinks(html);
-
-      if (
-        isExcludedByDetailSocialLinks(detailSocialLinks)
-      ) {
-        excludedCount += 1;
-        console.log(
-          `詳細SNSリンクの除外設定によりスキップします: ${searchEvent.eventUrl} links=${detailSocialLinks.join(',')}`,
+      const organizerTwiplaUserId =
+        extractOrganizerTwiplaUserId(html);
+      const organizerExcluded =
+        isExcludedByOrganizerTwiplaUserId(
+          organizerTwiplaUserId,
         );
-        continue;
-      }
+      const socialLinkExcluded =
+        isExcludedByDetailSocialLinks(
+          detailSocialLinks,
+        );
+      const isExcluded =
+        organizerExcluded ||
+        socialLinkExcluded;
 
       resolvedDetails.push({
-        event: parseEventDetail(html, searchEvent),
+        event: parseEventDetail(
+          html,
+          searchEvent,
+        ),
         fetchedAt: new Date().toISOString(),
         detailSocialLinks,
+        organizerTwiplaUserId,
+        isExcluded,
       });
       fetchedCount += 1;
+
+      if (isExcluded) {
+        excludedCount += 1;
+        console.log(
+          `主催者または詳細SNSの除外設定により非表示にします: ${searchEvent.eventUrl} organizer=${organizerTwiplaUserId} links=${detailSocialLinks.join(',')}`,
+        );
+      }
     } catch (error) {
       console.warn(
         `詳細取得に失敗したため、キャッシュまたは地図対象外情報を利用します: ${searchEvent.eventUrl}`,
         error,
       );
 
-      if (
-        cacheEntry &&
-        !isExcludedByDetailSocialLinks(
-          cacheEntry.detailSocialLinks,
-        )
-      ) {
+      if (cacheEntry) {
+        const isExcluded =
+          cacheEntry.isExcluded ||
+          isExcludedByOrganizerTwiplaUserId(
+            cacheEntry.organizerTwiplaUserId,
+          ) ||
+          isExcludedByDetailSocialLinks(
+            cacheEntry.detailSocialLinks,
+          );
+
         resolvedDetails.push({
           event: mergeCachedEvent(
             cacheEntry.event,
@@ -205,32 +248,43 @@ const resolveAllDetails = async (
           fetchedAt: cacheEntry.fetchedAt,
           detailSocialLinks:
             cacheEntry.detailSocialLinks,
+          organizerTwiplaUserId:
+            cacheEntry.organizerTwiplaUserId,
+          isExcluded,
         });
-      } else if (!cacheEntry) {
+
+        if (isExcluded) {
+          excludedCount += 1;
+        }
+      } else {
         resolvedDetails.push({
           event: {
             ...searchEvent,
             address: '',
-            locationText: searchEvent.summaryLocation,
+            locationText:
+              searchEvent.summaryLocation,
             latitude: null,
             longitude: null,
             locationStatus: 'unknown',
-            locationNote: '詳細ページの取得に失敗しました',
+            locationNote:
+              '詳細ページの取得に失敗しました',
           },
-          fetchedAt: new Date().toISOString(),
+          fetchedAt:
+            new Date().toISOString(),
           detailSocialLinks: [],
+          organizerTwiplaUserId: '',
+          isExcluded: false,
         });
       }
     }
   }
 
   console.log(
-    `詳細取得: ${fetchedCount}件、キャッシュ利用: ${skippedCount}件、SNSリンク除外: ${excludedCount}件`,
+    `詳細取得: ${fetchedCount}件、キャッシュ利用: ${skippedCount}件、除外: ${excludedCount}件`,
   );
 
   return resolvedDetails;
 };
-
 /**
  * 最新イベントだけをイベントキャッシュへ保存します。
  */
@@ -245,6 +299,9 @@ const persistEventCache = async (
       fetchedAt: resolved.fetchedAt,
       detailSocialLinks:
         resolved.detailSocialLinks,
+      organizerTwiplaUserId:
+        resolved.organizerTwiplaUserId,
+      isExcluded: resolved.isExcluded,
       event: resolved.event,
     }));
 
@@ -287,25 +344,37 @@ const main = async (): Promise<void> => {
     client,
     searchEvents,
   );
-  const rawEvents = resolvedDetails.map(
-    (resolved) => resolved.event,
-  );
+  const publishableResolvedDetails =
+    resolvedDetails.filter(
+      (resolved) => !resolved.isExcluded,
+    );
+  const rawEvents =
+    publishableResolvedDetails.map(
+      (resolved) => resolved.event,
+    );
   const events = await geocodeEvents(
     rawEvents,
     userAgent,
   );
   const eventsById = new Map(
-    events.map((event) => [event.eventId, event]),
+    events.map((event) => [
+      event.eventId,
+      event,
+    ]),
   );
   const geocodedResolvedDetails =
     resolvedDetails.map((resolved) => ({
       ...resolved,
-      event:
-        eventsById.get(resolved.event.eventId) ??
-        resolved.event,
+      event: resolved.isExcluded
+        ? resolved.event
+        : eventsById.get(
+            resolved.event.eventId,
+          ) ?? resolved.event,
     }));
 
-  await persistEventCache(geocodedResolvedDetails);
+  await persistEventCache(
+    geocodedResolvedDetails,
+  );
 
   const defaultCenter = await geocodeDefaultCenter(
     DEFAULT_FOCUS_ADDRESS,
