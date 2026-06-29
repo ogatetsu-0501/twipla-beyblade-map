@@ -30,6 +30,7 @@ describe('parseSearchResults', () => {
 
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual({
+      source: 'twipla',
       eventId: '728922',
       eventUrl: 'https://twipla.jp/events/728922',
       title: 'ベイブレード交流会',

@@ -4,6 +4,7 @@ import { parseEventDetail } from '../detail-parser';
 import type { SearchEvent } from '../types';
 
 const searchEvent: SearchEvent = {
+  source: 'twipla',
   eventId: '728922',
   eventUrl: 'https://twipla.jp/events/728922',
   title: 'ベイブレード交流会',

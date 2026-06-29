@@ -83,7 +83,7 @@ jobs:
             --fetch-retry-maxtimeout=60000 \
             --fetch-timeout=300000
 
-      # TwiPlaを低速で巡回して、公開用データファイルを生成します。
+      # TwiPlaとTonamelを取得して、公開用データファイルを生成します。
       - name: Scrape events
         env:
           SCRAPER_USER_AGENT: beyblade-event-map/1.0 (+${{ github.server_url }}/${{ github.repository }})

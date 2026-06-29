@@ -15,7 +15,7 @@ export const OUTPUT_FILE_PATH = 'public/data/events.bin';
 export const GEOCODE_CACHE_FILE_PATH = '.cache/geocode.json';
 export const EVENT_CACHE_FILE_PATH = '.cache/events.json';
 
-export const EVENT_CACHE_SCHEMA_VERSION = 3;
+export const EVENT_CACHE_SCHEMA_VERSION = 4;
 export const EVENT_CACHE_MAX_AGE_DAYS = 28;
 export const EVENT_CACHE_REFRESH_WINDOW_DAYS = 14;
 

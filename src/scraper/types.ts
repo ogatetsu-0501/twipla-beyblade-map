@@ -1,3 +1,5 @@
+export type EventSource = 'twipla' | 'tonamel';
+
 export type LocationStatus =
   | 'exact'
   | 'venue'
@@ -6,6 +8,7 @@ export type LocationStatus =
   | 'unknown';
 
 export type SearchEvent = {
+  source: EventSource;
   eventId: string;
   eventUrl: string;
   title: string;

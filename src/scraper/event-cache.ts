@@ -23,6 +23,7 @@ export const createEventFingerprint = (
   event: SearchEvent,
 ): string =>
   [
+    event.source,
     event.eventId,
     event.title,
     event.startsAtText,

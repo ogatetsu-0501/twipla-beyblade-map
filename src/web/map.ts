@@ -1,9 +1,10 @@
-import L, { type Map } from 'leaflet';
+import L, { type Map, type Marker } from 'leaflet';
 
 import 'leaflet/dist/leaflet.css';
 
 import type {
   EventData,
+  EventSource,
   PublishedPayload,
 } from './types';
 
@@ -19,6 +20,11 @@ type EventMarkerGroup = {
   latitude: number;
   longitude: number;
   events: EventData[];
+};
+
+type MarkerDateParts = {
+  month: string;
+  day: string;
 };
 
 const escapeHtml = (value: string): string =>
@@ -47,6 +53,28 @@ const parseEventDate = (
   return new Date(
     Date.UTC(year, month - 1, day, -9, 0, 0),
   );
+};
+
+const createMarkerDateParts = (
+  startsAtText: string,
+): MarkerDateParts => {
+  const match = startsAtText.match(
+    /^\d{4}\/(\d{2})\/(\d{2})/,
+  );
+
+  if (!match?.[1] || !match[2]) {
+    return {
+      month: '?月',
+      day: '?',
+    };
+  }
+
+  return {
+    month: `${Number.parseInt(match[1], 10)}月`,
+    day: String(
+      Number.parseInt(match[2], 10),
+    ),
+  };
 };
 
 const createEventMarkerColors = (
@@ -195,40 +223,58 @@ const createGroupLocationLabel = (
   }会場`;
 };
 
-const createEventTooltipHtml = (
-  event: EventData,
+const createSourceLabel = (
+  source: EventSource,
 ): string =>
-  [
-    `<strong>${escapeHtml(event.title)}</strong>`,
-    escapeHtml(event.startsAtText),
-    `<span class="event-tooltip-location">場所：${escapeHtml(
-      createTooltipLocation(event),
-    )}</span>`,
-  ].join('<br>');
+  source === 'tonamel'
+    ? 'Tonamel'
+    : 'TwiPla';
 
-const createGroupTooltipHtml = (
+const createSourceClass = (
   events: EventData[],
 ): string => {
-  const sortedEvents = sortEventsByDate(events);
-  const firstEvent = sortedEvents[0];
-  const firstDate =
-    firstEvent?.startsAtText ?? '';
+  const sources = new Set(
+    events.map((event) => event.source),
+  );
 
-  return [
-    `<strong>${escapeHtml(
-      createGroupLocationLabel(sortedEvents),
-    )}</strong>`,
-    `${sortedEvents.length}件のイベント`,
-    firstDate
-      ? `直近：${escapeHtml(firstDate)}`
-      : '',
-    'クリックで一覧を表示',
-  ]
-    .filter(Boolean)
-    .join('<br>');
+  if (sources.size >= 2) {
+    return 'mixed';
+  }
+
+  return sources.has('tonamel')
+    ? 'tonamel'
+    : 'twipla';
 };
 
-const createGroupPopupHtml = (
+const createEventBlockHtml = (
+  event: EventData,
+  showLocation: boolean,
+): string => {
+  const locationLine = showLocation
+    ? `<span class="event-popup-location">場所：${escapeHtml(
+        createTooltipLocation(event),
+      )}</span>`
+    : '';
+
+  return [
+    `<a class="event-popup-block event-popup-block--${event.source}"`,
+    ` href="${escapeHtml(event.eventUrl)}"`,
+    ' target="_blank" rel="noopener noreferrer">',
+    '<span class="event-popup-block-heading">',
+    `<span class="event-source-badge event-source-badge--${event.source}">${createSourceLabel(
+      event.source,
+    )}</span>`,
+    `<strong>${escapeHtml(event.title)}</strong>`,
+    '</span>',
+    `<span class="event-popup-date">${escapeHtml(
+      event.startsAtText,
+    )}</span>`,
+    locationLine,
+    '</a>',
+  ].join('');
+};
+
+const createPopupHtml = (
   events: EventData[],
 ): string => {
   const sortedEvents = sortEventsByDate(events);
@@ -237,84 +283,93 @@ const createGroupPopupHtml = (
   const uniqueLocationCount = new Set(
     sortedEvents.map(createTooltipLocation),
   ).size;
-  const listItems = sortedEvents
-    .map((event) => {
-      const locationLine =
-        uniqueLocationCount > 1
-          ? `<div class="event-group-popup-location">場所：${escapeHtml(
-              createTooltipLocation(event),
-            )}</div>`
-          : '';
-
-      return [
-        '<li>',
-        `<a href="${escapeHtml(
-          event.eventUrl,
-        )}" target="_blank" rel="noopener noreferrer">${escapeHtml(
-          event.title,
-        )}</a>`,
-        `<div class="event-group-popup-date">${escapeHtml(
-          event.startsAtText,
-        )}</div>`,
-        locationLine,
-        '</li>',
-      ].join('');
-    })
+  const showLocation = uniqueLocationCount > 1;
+  const eventBlocks = sortedEvents
+    .map((event) =>
+      createEventBlockHtml(
+        event,
+        showLocation,
+      ),
+    )
     .join('');
 
   return [
-    '<div class="event-group-popup">',
-    `<strong>${escapeHtml(
+    '<div class="event-popup">',
+    `<div class="event-popup-header"><strong>${escapeHtml(
       groupLocation,
     )}</strong>`,
-    `<div class="event-group-popup-count">${sortedEvents.length}件のイベント</div>`,
-    `<ul>${listItems}</ul>`,
+    `<span>${sortedEvents.length}件</span></div>`,
+    '<div class="event-popup-help">',
+    'マーカーをホバー、または1回クリックで表示します。イベントをクリックすると詳細ページを開きます。',
+    '</div>',
+    `<div class="event-popup-list">${eventBlocks}</div>`,
     '</div>',
   ].join('');
 };
 
-const addSingleEventMarker = (
-  map: Map,
-  event: EventData,
-  latitude: number,
-  longitude: number,
-): void => {
+const createDateMarkerIcon = (
+  events: EventData[],
+): L.DivIcon => {
+  const sortedEvents = sortEventsByDate(events);
+  const firstEvent = sortedEvents[0];
+  const dateParts = createMarkerDateParts(
+    firstEvent?.startsAtText ?? '',
+  );
   const markerColors =
     createEventMarkerColors(
-      event.startsAtText,
+      firstEvent?.startsAtText ?? '',
     );
-  const marker = L.circleMarker(
-    [latitude, longitude],
-    {
-      radius: 8,
-      weight: 2,
-      fillOpacity: 0.9,
-      fillColor: markerColors.fillColor,
-      color: markerColors.color,
-    },
-  ).addTo(map);
+  const sourceClass =
+    createSourceClass(sortedEvents);
+  const countBadge =
+    sortedEvents.length > 1
+      ? `<span class="event-date-marker-count">${
+          sortedEvents.length > 99
+            ? '99+'
+            : sortedEvents.length
+        }</span>`
+      : '';
 
-  marker.bindTooltip(
-    createEventTooltipHtml(event),
-    {
-      direction: 'top',
-      sticky: true,
-      className: 'event-tooltip',
-    },
-  );
-  marker.on('click', () => {
-    window.open(
-      event.eventUrl,
-      '_blank',
-      'noopener,noreferrer',
-    );
+  return L.divIcon({
+    className: 'event-date-marker-wrapper',
+    html: [
+      '<span',
+      ` class="event-date-marker event-date-marker--${sourceClass}"`,
+      ` style="--event-marker-fill:${markerColors.fillColor};--event-marker-border:${markerColors.color}"`,
+      '>',
+      `<span class="event-date-marker-month">${dateParts.month}</span>`,
+      `<span class="event-date-marker-day">${dateParts.day}</span>`,
+      countBadge,
+      '<span class="event-date-marker-tail"></span>',
+      '</span>',
+    ].join(''),
+    iconSize: [48, 58],
+    iconAnchor: [24, 56],
+    popupAnchor: [0, -52],
   });
-  marker
-    .getElement()
-    ?.classList.add('event-map-marker');
 };
 
-const addGroupedEventMarker = (
+const bindMarkerInteraction = (
+  marker: Marker,
+  events: EventData[],
+): void => {
+  marker.bindPopup(
+    createPopupHtml(events),
+    {
+      maxWidth: 410,
+      minWidth: 290,
+      autoPanPadding: L.point(30, 70),
+      closeButton: true,
+    },
+  );
+
+  // PCではホバー、スマホでは最初のタップでイベント一覧を表示します。
+  marker.on('mouseover', () => {
+    marker.openPopup();
+  });
+};
+
+const addEventMarker = (
   map: Map,
   group: EventMarkerGroup,
 ): void => {
@@ -326,48 +381,24 @@ const addGroupedEventMarker = (
     return;
   }
 
-  const markerColors =
-    createEventMarkerColors(
-      firstEvent.startsAtText,
-    );
-  const countText =
-    sortedEvents.length > 99
-      ? '99+'
-      : String(sortedEvents.length);
+  const dateParts = createMarkerDateParts(
+    firstEvent.startsAtText,
+  );
   const marker = L.marker(
     [group.latitude, group.longitude],
     {
-      icon: L.divIcon({
-        className:
-          'event-group-marker-wrapper',
-        html: [
-          '<span',
-          ' class="event-group-marker"',
-          ` style="--event-marker-fill:${markerColors.fillColor};--event-marker-border:${markerColors.color}"`,
-          `>${countText}</span>`,
-        ].join(''),
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-      }),
+      icon: createDateMarkerIcon(
+        sortedEvents,
+      ),
       keyboard: true,
-      title: `${sortedEvents.length}件のイベント`,
+      title: `${dateParts.month}${dateParts.day}日・${sortedEvents.length}件`,
+      riseOnHover: true,
     },
   ).addTo(map);
 
-  marker.bindTooltip(
-    createGroupTooltipHtml(sortedEvents),
-    {
-      direction: 'top',
-      sticky: true,
-      className: 'event-tooltip',
-    },
-  );
-  marker.bindPopup(
-    createGroupPopupHtml(sortedEvents),
-    {
-      maxWidth: 380,
-      minWidth: 280,
-    },
+  bindMarkerInteraction(
+    marker,
+    sortedEvents,
   );
 };
 
@@ -447,22 +478,7 @@ const addEventMarkers = (
     groupEventsByLocation(events);
 
   for (const group of groups) {
-    if (group.events.length === 1) {
-      const event = group.events[0];
-
-      if (event) {
-        addSingleEventMarker(
-          map,
-          event,
-          group.latitude,
-          group.longitude,
-        );
-      }
-
-      continue;
-    }
-
-    addGroupedEventMarker(map, group);
+    addEventMarker(map, group);
   }
 
   return groups.length;

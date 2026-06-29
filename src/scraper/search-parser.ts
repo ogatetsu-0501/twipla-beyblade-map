@@ -82,6 +82,7 @@ export const parseSearchResults = (
       }
 
       events.push({
+        source: 'twipla',
         eventId,
         eventUrl: new URL(
           href,

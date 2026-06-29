@@ -111,3 +111,15 @@ export const EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS = [
 - TwiPla側のHTML構造が変更された場合はパーサーの修正が必要です。
 - 地図タイルはOpenStreetMapを使用します。
 - 座標補完にはNominatimを低速で使用し、結果をGitHub Actionsのキャッシュへ保存します。
+
+
+## 取得元
+
+- TwiPla
+- Tonamel（公開BEYBLADE Xイベント。CookieやCSRFトークンは保存しません）
+
+## 地図操作
+
+- マーカーには直近イベントの月日を表示します。
+- PCではマーカーホバー、スマホでは1回タップでイベントブロックを表示します。
+- 表示されたイベントブロックをクリックすると、TwiPlaまたはTonamelの詳細ページを開きます。

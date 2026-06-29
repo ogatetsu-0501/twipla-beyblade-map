@@ -12,6 +12,7 @@ import type {
 } from '../types';
 
 const baseSearchEvent: SearchEvent = {
+  source: 'twipla',
   eventId: '728922',
   eventUrl: 'https://twipla.jp/events/728922',
   title: 'ベイブレード交流会',

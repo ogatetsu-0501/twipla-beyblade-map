@@ -7,6 +7,14 @@ const createEventCard = (event: EventData): HTMLElement => {
   const article = document.createElement('article');
   article.className = 'event-card';
 
+  const source = document.createElement('span');
+  source.className =
+    `event-source-badge event-source-badge--${event.source}`;
+  source.textContent =
+    event.source === 'tonamel'
+      ? 'Tonamel'
+      : 'TwiPla';
+
   const heading = document.createElement('h3');
   const link = document.createElement('a');
   link.href = event.eventUrl;
@@ -27,7 +35,7 @@ const createEventCard = (event: EventData): HTMLElement => {
   note.textContent =
     event.locationNote || '地図表示に必要な座標がありません';
 
-  article.append(heading, date, location, note);
+  article.append(source, heading, date, location, note);
 
   return article;
 };

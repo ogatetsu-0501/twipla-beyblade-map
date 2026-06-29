@@ -10,6 +10,7 @@ import {
   SEARCH_TARGET,
   TWIPLA_ORIGIN,
 } from './constants';
+import { createTomorrowJapanDate } from './date-utils';
 import { parseEventDetail } from './detail-parser';
 import {
   extractDetailSocialLinks,
@@ -30,6 +31,7 @@ import {
 } from './geocoder';
 import { SlowHttpClient } from './http';
 import { parseSearchResults } from './search-parser';
+import { fetchTonamelEvents } from './tonamel';
 import type {
   EventCacheEntry,
   EventDetail,
@@ -53,27 +55,13 @@ const createSearchUrl = (
 };
 
 /**
- * 日本時間の年月日を検索URL用のYYYY-MM-DDへ整形します。
- */
-const createJapanDate = (): string => {
-  const formatter = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-
-  return formatter.format(new Date());
-};
-
-/**
  * 検索結果に100件を超える候補がある場合も、次ページが空になるまで取得します。
  */
 const fetchAllSearchEvents = async (
   client: SlowHttpClient,
   limit: number,
+  searchDate: string,
 ): Promise<SearchEvent[]> => {
-  const searchDate = createJapanDate();
   const allEvents: SearchEvent[] = [];
   const seenEventIds = new Set<string>();
 
@@ -334,11 +322,16 @@ const main = async (): Promise<void> => {
     maximumDelayMilliseconds,
   });
 
+  const searchStartDate =
+    createTomorrowJapanDate();
   const searchEvents = await fetchAllSearchEvents(
     client,
     searchLimit,
+    searchStartDate,
   );
-  console.log(`${searchEvents.length}件の候補を取得しました`);
+  console.log(
+    `TwiPlaから${searchEvents.length}件の候補を取得しました`,
+  );
 
   const resolvedDetails = await resolveAllDetails(
     client,
@@ -348,10 +341,30 @@ const main = async (): Promise<void> => {
     resolvedDetails.filter(
       (resolved) => !resolved.isExcluded,
     );
-  const rawEvents =
-    publishableResolvedDetails.map(
-      (resolved) => resolved.event,
+
+  let tonamelEvents: EventDetail[] = [];
+
+  try {
+    tonamelEvents = await fetchTonamelEvents(
+      searchStartDate,
+      userAgent,
     );
+    console.log(
+      `Tonamelから${tonamelEvents.length}件の候補を取得しました`,
+    );
+  } catch (error) {
+    console.warn(
+      'Tonamelの取得に失敗したため、TwiPlaのみで続行します',
+      error,
+    );
+  }
+
+  const rawEvents = [
+    ...publishableResolvedDetails.map(
+      (resolved) => resolved.event,
+    ),
+    ...tonamelEvents,
+  ];
   const events = await geocodeEvents(
     rawEvents,
     userAgent,
