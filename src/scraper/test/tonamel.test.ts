@@ -37,6 +37,7 @@ describe('Tonamel competition conversion', () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       source: 'tonamel',
+      eventFilterTags: ['other'],
       eventId:
         'tonamel:f0wtZ:tournament-1',
       eventUrl:

@@ -1,8 +1,17 @@
 import './style.css';
 
+import {
+  filterEvents,
+  initializeEventFilters,
+} from './filters';
 import { renderUnmappedEvents } from './list';
 import { initializeMap } from './map';
-import type { PublishedPayload } from './types';
+import type {
+  PublishedPayload,
+} from './types';
+import type {
+  EventFilterState,
+} from './filters';
 import { q } from './unpack';
 
 /**
@@ -10,7 +19,8 @@ import { q } from './unpack';
  */
 const formatUpdatedAt = (value: string): string => {
   const date = new Date(value);
-  const isValidDate = !Number.isNaN(date.getTime());
+  const isValidDate =
+    !Number.isNaN(date.getTime());
 
   if (!isValidDate) {
     return '更新日時不明';
@@ -28,12 +38,21 @@ const formatUpdatedAt = (value: string): string => {
  */
 const main = async (): Promise<void> => {
   const updatedAtElement =
-    document.querySelector<HTMLElement>('#updated-at');
+    document.querySelector<HTMLElement>(
+      '#updated-at',
+    );
+  const filterSummaryElement =
+    document.querySelector<HTMLElement>(
+      '#filter-summary',
+    );
 
   try {
-    const response = await fetch('./data/events.bin', {
-      cache: 'no-store',
-    });
+    const response = await fetch(
+      './data/events.bin',
+      {
+        cache: 'no-store',
+      },
+    );
 
     if (!response.ok) {
       throw new Error(
@@ -44,25 +63,62 @@ const main = async (): Promise<void> => {
     const payload = await q<PublishedPayload>(
       await response.text(),
     );
+    const mapController =
+      initializeMap(payload);
 
-    initializeMap(payload);
-    renderUnmappedEvents(payload.events);
+    const renderFilteredEvents = (
+      filterState:
+        EventFilterState,
+    ): void => {
+      const filteredEvents =
+        filterEvents(
+          payload.events,
+          filterState,
+        );
 
-    if (!!updatedAtElement) {
-      updatedAtElement.textContent = `最終更新：${formatUpdatedAt(payload.updatedAt)}`;
+      mapController.setEvents(
+        filteredEvents,
+      );
+      renderUnmappedEvents(
+        filteredEvents,
+      );
+
+      if (filterSummaryElement) {
+        filterSummaryElement.textContent =
+          `${payload.events.length}件中${filteredEvents.length}件を表示`;
+      }
+    };
+
+    const filterController =
+      initializeEventFilters(
+        payload.events,
+        renderFilteredEvents,
+      );
+
+    renderFilteredEvents(
+      filterController.getState(),
+    );
+
+    if (updatedAtElement) {
+      updatedAtElement.textContent =
+        `最終更新：${formatUpdatedAt(
+          payload.updatedAt,
+        )}`;
     }
   } catch (error) {
     console.error(error);
 
-    if (!!updatedAtElement) {
+    if (updatedAtElement) {
       updatedAtElement.textContent =
         'イベントデータの読み込みに失敗しました';
     }
 
     const mapStatusElement =
-      document.querySelector<HTMLElement>('#map-status');
+      document.querySelector<HTMLElement>(
+        '#map-status',
+      );
 
-    if (!!mapStatusElement) {
+    if (mapStatusElement) {
       mapStatusElement.textContent =
         '時間を置いてページを再読み込みしてください。';
     }

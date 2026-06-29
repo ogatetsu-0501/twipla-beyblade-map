@@ -11,6 +11,7 @@ import {
   TWIPLA_ORIGIN,
 } from './constants';
 import { createTomorrowJapanDate } from './date-utils';
+import { deduplicateEvents } from './deduplicate';
 import { parseEventDetail } from './detail-parser';
 import {
   extractDetailSocialLinks,
@@ -30,6 +31,7 @@ import {
   geocodeEvents,
 } from './geocoder';
 import { SlowHttpClient } from './http';
+import { fetchOfficialEvents } from './official';
 import { parseSearchResults } from './search-parser';
 import { fetchTonamelEvents } from './tonamel';
 import type {
@@ -359,14 +361,39 @@ const main = async (): Promise<void> => {
     );
   }
 
+  let officialEvents: EventDetail[] = [];
+
+  try {
+    officialEvents = await fetchOfficialEvents(
+      searchStartDate,
+      userAgent,
+    );
+    console.log(
+      `公式サイトから${officialEvents.length}件の候補を取得しました`,
+    );
+  } catch (error) {
+    console.warn(
+      '公式イベントの取得に失敗したため、TwiPlaとTonamelのみで続行します',
+      error,
+    );
+  }
+
   const rawEvents = [
     ...publishableResolvedDetails.map(
       (resolved) => resolved.event,
     ),
     ...tonamelEvents,
+    ...officialEvents,
   ];
+  const uniqueEvents =
+    deduplicateEvents(rawEvents);
+
+  console.log(
+    `重複排除: ${rawEvents.length}件 → ${uniqueEvents.length}件`,
+  );
+
   const events = await geocodeEvents(
-    rawEvents,
+    uniqueEvents,
     userAgent,
   );
   const eventsById = new Map(

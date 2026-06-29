@@ -13,7 +13,9 @@ const createEventCard = (event: EventData): HTMLElement => {
   source.textContent =
     event.source === 'tonamel'
       ? 'Tonamel'
-      : 'TwiPla';
+      : event.source === 'official'
+        ? '公式'
+        : 'TwiPla';
 
   const heading = document.createElement('h3');
   const link = document.createElement('a');
@@ -22,6 +24,11 @@ const createEventCard = (event: EventData): HTMLElement => {
   link.rel = 'noopener noreferrer';
   link.textContent = event.title;
   heading.append(link);
+
+  const type = document.createElement('p');
+  type.className = 'event-type';
+  type.textContent =
+    `種別：${event.eventTypeLabel}`;
 
   const date = document.createElement('p');
   date.className = 'event-date';
@@ -35,7 +42,7 @@ const createEventCard = (event: EventData): HTMLElement => {
   note.textContent =
     event.locationNote || '地図表示に必要な座標がありません';
 
-  article.append(source, heading, date, location, note);
+  article.append(source, heading, type, date, location, note);
 
   return article;
 };

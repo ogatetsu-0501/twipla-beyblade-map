@@ -2,6 +2,11 @@ import { load, type Cheerio } from 'cheerio';
 import type { Element } from 'domhandler';
 
 import { TWIPLA_ORIGIN } from './constants';
+import {
+  classifyEventCategory,
+  classifyEventFilterTags,
+  createInferredEventTypeLabel,
+} from './event-type';
 import type { SearchEvent } from './types';
 import { normalizeText } from './utils';
 
@@ -83,6 +88,12 @@ export const parseSearchResults = (
 
       events.push({
         source: 'twipla',
+        eventCategory:
+          classifyEventCategory(title),
+        eventFilterTags:
+          classifyEventFilterTags(title),
+        eventTypeLabel:
+          createInferredEventTypeLabel(title),
         eventId,
         eventUrl: new URL(
           href,

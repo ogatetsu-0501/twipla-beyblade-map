@@ -2,6 +2,11 @@ import {
   formatUnixSecondsInJapan,
   japanDateToUnixSeconds,
 } from './date-utils';
+import {
+  classifyEventCategory,
+  classifyEventFilterTags,
+  createInferredEventTypeLabel,
+} from './event-type';
 import type { EventDetail } from './types';
 
 const TONAMEL_GRAPHQL_URL =
@@ -138,12 +143,22 @@ export const convertTonamelCompetitions = (
       }
 
       events.push({
+        source: 'tonamel',
+        eventCategory:
+          classifyEventCategory(competition.title),
+        eventFilterTags:
+          classifyEventFilterTags(
+            competition.title,
+          ),
+        eventTypeLabel:
+          createInferredEventTypeLabel(
+            competition.title,
+          ),
         eventId: `tonamel:${competition.id}:${tournament.id}`,
         eventUrl: `${TONAMEL_ORIGIN}/competition/${competition.id}`,
         title: competition.title,
         startsAtText,
         summaryLocation: address,
-        source: 'tonamel',
         address,
         locationText,
         latitude: null,

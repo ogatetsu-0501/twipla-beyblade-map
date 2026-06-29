@@ -225,10 +225,16 @@ const createGroupLocationLabel = (
 
 const createSourceLabel = (
   source: EventSource,
-): string =>
-  source === 'tonamel'
-    ? 'Tonamel'
-    : 'TwiPla';
+): string => {
+  switch (source) {
+    case 'tonamel':
+      return 'Tonamel';
+    case 'official':
+      return '公式';
+    default:
+      return 'TwiPla';
+  }
+};
 
 const createSourceClass = (
   events: EventData[],
@@ -239,6 +245,10 @@ const createSourceClass = (
 
   if (sources.size >= 2) {
     return 'mixed';
+  }
+
+  if (sources.has('official')) {
+    return 'official';
   }
 
   return sources.has('tonamel')
@@ -266,9 +276,14 @@ const createEventBlockHtml = (
     )}</span>`,
     `<strong>${escapeHtml(event.title)}</strong>`,
     '</span>',
+    `<span class="event-popup-meta">`,
+    `<span class="event-type-badge">${escapeHtml(
+      event.eventTypeLabel,
+    )}</span>`,
     `<span class="event-popup-date">${escapeHtml(
       event.startsAtText,
     )}</span>`,
+    `</span>`,
     locationLine,
     '</a>',
   ].join('');
@@ -370,7 +385,7 @@ const bindMarkerInteraction = (
 };
 
 const addEventMarker = (
-  map: Map,
+  layer: L.LayerGroup,
   group: EventMarkerGroup,
 ): void => {
   const sortedEvents =
@@ -394,7 +409,7 @@ const addEventMarker = (
       title: `${dateParts.month}${dateParts.day}日・${sortedEvents.length}件`,
       riseOnHover: true,
     },
-  ).addTo(map);
+  ).addTo(layer);
 
   bindMarkerInteraction(
     marker,
@@ -471,22 +486,28 @@ const focusCurrentLocation = (
 };
 
 const addEventMarkers = (
-  map: Map,
+  layer: L.LayerGroup,
   events: EventData[],
 ): number => {
   const groups =
     groupEventsByLocation(events);
 
   for (const group of groups) {
-    addEventMarker(map, group);
+    addEventMarker(layer, group);
   }
 
   return groups.length;
 };
 
+export type EventMapController = {
+  setEvents: (
+    events: EventData[],
+  ) => void;
+};
+
 export const initializeMap = (
   payload: PublishedPayload,
-): void => {
+): EventMapController => {
   const mapElement =
     document.querySelector<HTMLElement>(
       '#map',
@@ -528,17 +549,28 @@ export const initializeMap = (
     },
   ).addTo(map);
 
-  const markerCount = addEventMarkers(
-    map,
-    payload.events,
-  );
+  const eventLayer =
+    L.layerGroup().addTo(map);
 
-  if (markerCount === 0) {
-    map.setView(
-      defaultCenter,
-      JAPAN_ZOOM,
-    );
-  }
+  const setEvents = (
+    events: EventData[],
+  ): void => {
+    eventLayer.clearLayers();
+    const markerCount =
+      addEventMarkers(
+        eventLayer,
+        events,
+      );
+
+    if (markerCount === 0) {
+      map.setView(
+        defaultCenter,
+        JAPAN_ZOOM,
+      );
+    }
+  };
+
+  setEvents(payload.events);
 
   currentLocationButton.addEventListener(
     'click',
@@ -554,4 +586,8 @@ export const initializeMap = (
     map,
     statusElement,
   );
+
+  return {
+    setEvents,
+  };
 };

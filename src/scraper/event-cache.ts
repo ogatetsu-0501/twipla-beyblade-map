@@ -24,6 +24,9 @@ export const createEventFingerprint = (
 ): string =>
   [
     event.source,
+    event.eventCategory,
+    [...event.eventFilterTags].sort().join(','),
+    event.eventTypeLabel,
     event.eventId,
     event.title,
     event.startsAtText,

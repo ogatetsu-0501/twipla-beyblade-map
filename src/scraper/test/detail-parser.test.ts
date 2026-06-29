@@ -5,6 +5,9 @@ import type { SearchEvent } from '../types';
 
 const searchEvent: SearchEvent = {
   source: 'twipla',
+  eventCategory: 'other',
+  eventFilterTags: ['other'],
+  eventTypeLabel: 'その他',
   eventId: '728922',
   eventUrl: 'https://twipla.jp/events/728922',
   title: 'ベイブレード交流会',
