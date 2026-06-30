@@ -13,33 +13,62 @@ const OFFICIAL_EVENT_LIST_URL =
 const OFFICIAL_EVENT_API_URL =
   `${OFFICIAL_ORIGIN}/beyblade-x/shop_event/event_manage/public/api/open_all_event`;
 
+type NullableText =
+  | string
+  | null
+  | undefined;
+
 type OfficialApiEvent = {
-  id: number;
-  event_type_id: number;
-  event_type_other: string | null;
-  detail_link_url: string | null;
-  state: number;
-  start_date: string;
-  shop_name: string;
-  address1: string;
-  address2: string;
-  event_type_name: string;
-  event_type_open_name: string;
-  name: string;
-  place_name: string;
-  place_address1: string;
-  place_address2: string;
-  place_address: string;
+  id: number | string | null;
+  event_type_id: number | null;
+  event_type_other: NullableText;
+  detail_link_url: NullableText;
+  state: number | string | null;
+  start_date: NullableText;
+  shop_name: NullableText;
+  address1: NullableText;
+  address2: NullableText;
+  event_type_name: NullableText;
+  event_type_open_name: NullableText;
+  name: NullableText;
+  place_name: NullableText;
+  place_address1: NullableText;
+  place_address2: NullableText;
+  place_address: NullableText;
 };
 
 type OfficialApiResponse = {
   state?: string;
-  events?: OfficialApiEvent[];
+  events?: Array<
+    OfficialApiEvent | null
+  >;
+};
+
+const normalizeNullableText = (
+  value: unknown,
+): string =>
+  typeof value === 'string'
+    ? value.trim()
+    : '';
+
+const normalizeIdentifier = (
+  value: unknown,
+): string => {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number'
+  ) {
+    return String(value).trim();
+  }
+
+  return '';
 };
 
 const formatOfficialUtcDateInJapan = (
-  value: string,
+  rawValue: unknown,
 ): string => {
+  const value =
+    normalizeNullableText(rawValue);
   const match = value.match(
     /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/,
   );
@@ -82,33 +111,58 @@ const formatOfficialUtcDateInJapan = (
 };
 
 const normalizeAddress = (
-  ...values: string[]
+  ...values: unknown[]
 ): string =>
   values
-    .map((value) => value.trim())
+    .map(normalizeNullableText)
     .filter(Boolean)
     .join('');
 
 const createOfficialEventTitle = (
   event: OfficialApiEvent,
 ): string =>
-  event.name.trim() ||
+  normalizeNullableText(event.name) ||
   [
-    event.event_type_open_name.trim(),
-    event.shop_name.trim(),
+    normalizeNullableText(
+      event.event_type_open_name,
+    ),
+    normalizeNullableText(
+      event.shop_name,
+    ),
   ]
     .filter(Boolean)
     .join('｜') ||
   'ベイブレードX公式イベント';
 
+const isPublishedOfficialEvent = (
+  value: unknown,
+): boolean =>
+  String(value ?? '') === '4';
+
 export const convertOfficialEvents = (
-  apiEvents: OfficialApiEvent[],
+  apiEvents: Array<
+    OfficialApiEvent | null
+  >,
   searchStartDate: string,
 ): EventDetail[] => {
   const events: EventDetail[] = [];
 
   for (const apiEvent of apiEvents) {
-    if (apiEvent.state !== 4) {
+    if (
+      !apiEvent ||
+      !isPublishedOfficialEvent(
+        apiEvent.state,
+      )
+    ) {
+      continue;
+    }
+
+    const officialEventId =
+      normalizeIdentifier(
+        apiEvent.id,
+      );
+
+    if (!officialEventId) {
       continue;
     }
 
@@ -119,24 +173,40 @@ export const convertOfficialEvents = (
 
     if (
       !startsAtText ||
-      startsAtText.slice(0, 10).replaceAll('/', '-') <
+      startsAtText
+        .slice(0, 10)
+        .replaceAll('/', '-') <
         searchStartDate
     ) {
       continue;
     }
 
     const eventTypeLabel =
-      apiEvent.event_type_open_name.trim() ||
-      apiEvent.event_type_name.trim() ||
-      apiEvent.event_type_other?.trim() ||
+      normalizeNullableText(
+        apiEvent.event_type_open_name,
+      ) ||
+      normalizeNullableText(
+        apiEvent.event_type_name,
+      ) ||
+      normalizeNullableText(
+        apiEvent.event_type_other,
+      ) ||
       'その他';
     const title =
-      createOfficialEventTitle(apiEvent);
+      createOfficialEventTitle(
+        apiEvent,
+      );
     const locationText =
-      apiEvent.place_name.trim() ||
-      apiEvent.shop_name.trim();
+      normalizeNullableText(
+        apiEvent.place_name,
+      ) ||
+      normalizeNullableText(
+        apiEvent.shop_name,
+      );
     const address =
-      apiEvent.place_address.trim() ||
+      normalizeNullableText(
+        apiEvent.place_address,
+      ) ||
       normalizeAddress(
         apiEvent.place_address1,
         apiEvent.place_address2,
@@ -144,6 +214,10 @@ export const convertOfficialEvents = (
       normalizeAddress(
         apiEvent.address1,
         apiEvent.address2,
+      );
+    const detailLinkUrl =
+      normalizeNullableText(
+        apiEvent.detail_link_url,
       );
 
     events.push({
@@ -159,15 +233,20 @@ export const convertOfficialEvents = (
           title,
         ),
       eventTypeLabel,
-      eventId: `official:${apiEvent.id}`,
+      eventId:
+        `official:${officialEventId}`,
       eventUrl:
-        apiEvent.detail_link_url?.trim() ||
+        detailLinkUrl ||
         OFFICIAL_EVENT_LIST_URL,
       title,
       startsAtText,
       summaryLocation:
-        apiEvent.place_address1.trim() ||
-        apiEvent.address1.trim(),
+        normalizeNullableText(
+          apiEvent.place_address1,
+        ) ||
+        normalizeNullableText(
+          apiEvent.address1,
+        ),
       address,
       locationText,
       latitude: null,

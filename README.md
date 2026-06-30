@@ -134,3 +134,9 @@ export const EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS = [
 - 大会種別は初期状態ですべて選択され、チェックを外した種別を除外します。
 - 開始日と終了日を指定して開催日の範囲を絞り込めます。
 - 月曜日から日曜日まで、曜日ごとに表示・非表示を切り替えられます。
+
+## Tonamel取得について
+
+TonamelはGraphQL取得前に公開ページと`csrf_token`エンドポイントへアクセスし、その実行中だけ使う一時セッションとCSRFトークンを取得します。Cookieやトークンはリポジトリ、公開データ、キャッシュへ保存しません。
+
+自動取得が環境側で遮断される場合だけ、GitHub ActionsのRepository secretsとして`TONAMEL_COOKIE`と`TONAMEL_CSRF_TOKEN`を設定できます。通常は設定不要です。

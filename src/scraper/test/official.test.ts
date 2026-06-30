@@ -86,4 +86,41 @@ describe('official event conversion', () => {
 
     expect(events).toHaveLength(0);
   });
+
+  it('nullを含む公式イベントでも例外にせず代替タイトルを作る', () => {
+    const events = convertOfficialEvents(
+      [
+        {
+          id: 50000,
+          event_type_id: 4,
+          event_type_other: null,
+          detail_link_url: null,
+          state: 4,
+          start_date:
+            '2026-07-01 01:00',
+          shop_name: 'テスト店舗',
+          address1: '東京都',
+          address2: '千代田区1-1',
+          event_type_name: 'S1大会',
+          event_type_open_name: 'S1イベント',
+          name: null,
+          place_name: null,
+          place_address1: null,
+          place_address2: null,
+          place_address: null,
+        },
+        null,
+      ],
+      '2026-06-30',
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventId: 'official:50000',
+      title: 'S1イベント｜テスト店舗',
+      locationText: 'テスト店舗',
+      address: '東京都千代田区1-1',
+    });
+  });
+
 });

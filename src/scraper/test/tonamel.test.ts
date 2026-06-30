@@ -1,8 +1,20 @@
-import { describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 import {
   convertTonamelCompetitions,
+  fetchTonamelEvents,
 } from '../tonamel';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('Tonamel competition conversion', () => {
   it('公開されたオフライン大会を地図イベントへ変換する', () => {
@@ -89,5 +101,98 @@ describe('Tonamel competition conversion', () => {
     ]);
 
     expect(events).toHaveLength(1);
+  });
+
+  it('公開ページとcsrf_tokenから一時セッションを取得してGraphQLへ渡す', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(
+        new Response(
+          '<!doctype html><html></html>',
+          {
+            status: 200,
+            headers: {
+              'set-cookie':
+                'tournament%3A%3Aweb_session=session-value; Path=/; HttpOnly',
+            },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            csrf_token: 'csrf-value',
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type':
+                'application/json',
+              'set-cookie':
+                'access=onece; Path=/',
+            },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              publicCompetitions: {
+                edges: [],
+                pageInfo: {
+                  endCursor: null,
+                  hasNextPage: false,
+                },
+              },
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type':
+                'application/json',
+            },
+          },
+        ),
+      );
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      fetchTonamelEvents(
+        '2026-06-30',
+        'test-agent',
+      ),
+    ).resolves.toEqual([]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const graphqlRequest =
+      fetchMock.mock.calls[2];
+    const graphqlUrl =
+      String(graphqlRequest?.[0]);
+    const graphqlInit =
+      graphqlRequest?.[1] as RequestInit;
+    const headers = new Headers(
+      graphqlInit.headers,
+    );
+
+    expect(graphqlUrl).toBe(
+      'https://tonamel.com/graphql/competition_management',
+    );
+    expect(
+      headers.get('x-csrf-token'),
+    ).toBe('csrf-value');
+    expect(
+      headers.get('cookie'),
+    ).toContain(
+      'tournament%3A%3Aweb_session=session-value',
+    );
+    expect(
+      headers.get('cookie'),
+    ).toContain('access=onece');
+    expect(
+      headers.get('x-page-view-id'),
+    ).toBeTruthy();
   });
 });
