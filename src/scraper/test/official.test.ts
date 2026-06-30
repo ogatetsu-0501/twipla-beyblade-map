@@ -48,6 +48,8 @@ describe('official event conversion', () => {
       eventTypeLabel:
         'アンバサダーイベント',
       eventId: 'official:48922',
+      eventUrl:
+        'https://beyblade.takaratomy.co.jp/beyblade-x/shop_event/manage/open_detail_all.html?id=48922',
       title:
         'マン族CUP 《神のシュート》6000',
       startsAtText:
@@ -57,6 +59,42 @@ describe('official event conversion', () => {
       address: '岐阜県関市千疋196',
     });
   });
+
+
+  it('公式イベントはID付き詳細ページへリンクする', () => {
+    const events = convertOfficialEvents(
+      [
+        {
+          id: 48584,
+          event_type_id: 4,
+          event_type_other: null,
+          detail_link_url:
+            'https://example.com/external',
+          state: 4,
+          start_date:
+            '2026-07-01 01:00',
+          shop_name: 'テスト店舗',
+          address1: '東京都',
+          address2: '千代田区',
+          event_type_name: 'S1大会',
+          event_type_open_name:
+            'S1イベント',
+          name: 'テスト大会',
+          place_name: 'テスト会場',
+          place_address1: '東京都',
+          place_address2: '千代田区',
+          place_address:
+            '東京都千代田区',
+        },
+      ],
+      '2026-07-01',
+    );
+
+    expect(events[0]?.eventUrl).toBe(
+      'https://beyblade.takaratomy.co.jp/beyblade-x/shop_event/manage/open_detail_all.html?id=48584',
+    );
+  });
+
 
   it('検索開始日より前のイベントを除外する', () => {
     const events = convertOfficialEvents(

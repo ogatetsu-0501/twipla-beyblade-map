@@ -315,7 +315,7 @@ const createPopupHtml = (
     )}</strong>`,
     `<span>${sortedEvents.length}件</span></div>`,
     '<div class="event-popup-help">',
-    'マーカーをホバー、または1回クリックで表示します。イベントをクリックすると詳細ページを開きます。',
+    'マーカーをクリックすると表示します。イベントをクリックすると詳細ページを開きます。',
     '</div>',
     `<div class="event-popup-list">${eventBlocks}</div>`,
     '</div>',
@@ -373,15 +373,10 @@ const bindMarkerInteraction = (
     {
       maxWidth: 410,
       minWidth: 290,
-      autoPanPadding: L.point(30, 70),
+      autoPan: false,
       closeButton: true,
     },
   );
-
-  // PCではホバー、スマホでは最初のタップでイベント一覧を表示します。
-  marker.on('mouseover', () => {
-    marker.openPopup();
-  });
 };
 
 const addEventMarker = (

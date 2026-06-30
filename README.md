@@ -124,7 +124,7 @@ export const EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS = [
 ## 地図操作
 
 - マーカーには直近イベントの月日を表示します。
-- PCではマーカーホバー、スマホでは1回タップでイベントブロックを表示します。
+- PC・スマホとも、マーカーをクリックするとイベントブロックを表示します。
 - 表示されたイベントブロックをクリックすると、各掲載元のページを開きます。
 - 体験会、連勝バトル、G3、S1、アンバサダー、G2/B4、G1/GPなどで表示を絞り込めます。
 
@@ -140,3 +140,5 @@ export const EXCLUDED_DETAIL_SOCIAL_LINK_PATTERNS = [
 TonamelはGraphQL取得前に公開ページと`csrf_token`エンドポイントへアクセスし、その実行中だけ使う一時セッションとCSRFトークンを取得します。Cookieやトークンはリポジトリ、公開データ、キャッシュへ保存しません。
 
 自動取得が環境側で遮断される場合だけ、GitHub ActionsのRepository secretsとして`TONAMEL_COOKIE`と`TONAMEL_CSRF_TOKEN`を設定できます。通常は設定不要です。
+
+- ポップアップ表示時に地図を自動スクロールしません。

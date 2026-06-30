@@ -10,6 +10,8 @@ const OFFICIAL_ORIGIN =
   'https://beyblade.takaratomy.co.jp';
 const OFFICIAL_EVENT_LIST_URL =
   `${OFFICIAL_ORIGIN}/beyblade-x/shop_event/manage/open_list_all.html`;
+const OFFICIAL_EVENT_DETAIL_URL =
+  `${OFFICIAL_ORIGIN}/beyblade-x/shop_event/manage/open_detail_all.html`;
 const OFFICIAL_EVENT_API_URL =
   `${OFFICIAL_ORIGIN}/beyblade-x/shop_event/event_manage/public/api/open_all_event`;
 
@@ -215,10 +217,14 @@ export const convertOfficialEvents = (
         apiEvent.address1,
         apiEvent.address2,
       );
-    const detailLinkUrl =
-      normalizeNullableText(
-        apiEvent.detail_link_url,
+    const detailPageUrl =
+      new URL(
+        OFFICIAL_EVENT_DETAIL_URL,
       );
+    detailPageUrl.searchParams.set(
+      'id',
+      officialEventId,
+    );
 
     events.push({
       source: 'official',
@@ -236,8 +242,7 @@ export const convertOfficialEvents = (
       eventId:
         `official:${officialEventId}`,
       eventUrl:
-        detailLinkUrl ||
-        OFFICIAL_EVENT_LIST_URL,
+        detailPageUrl.toString(),
       title,
       startsAtText,
       summaryLocation:
